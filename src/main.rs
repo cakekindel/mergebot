@@ -50,10 +50,9 @@
                    unsafe_code,
                    unused_crate_dependencies))]
 
-use serde_json as _;
-
 use std::env;
 
+use serde_json as _;
 use warp::Filter;
 
 /// Slack models

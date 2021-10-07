@@ -1,4 +1,4 @@
-use serde::{Serialize as Ser, Deserialize as De};
+use serde::{Deserialize as De, Serialize as Ser};
 
 /// Payload sent by slack on slash commands.
 ///
