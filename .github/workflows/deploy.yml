@@ -24,10 +24,14 @@ jobs:
         username: ${{ secrets.USERNAME }}
         key: ${{ secrets.KEY }}
         script: |
-          # Print reboot logs
-          journalctl --since "$(date --iso-8601 --utc)" \
+          # print logs whilst restarting
+          journalctl --since now \
                      --no-pager \
                      --follow \
                      --unit mergebot \
+
+          # systemd unit does git pull, cargo build --release, and then runs binary
           & systemctl restart mergebot;
+
+          # kill journalctl output when restart done
           kill %1;
