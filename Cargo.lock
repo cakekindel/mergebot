@@ -437,6 +437,7 @@ name = "mergebot"
 version = "0.0.0"
 dependencies = [
  "pretty_env_logger",
+ "serde_json",
  "tokio",
  "warp",
 ]

@@ -59,16 +59,45 @@ use warp::Filter;
 pub async fn main() {
   init_logger();
 
-  let hello =
-    warp::path!("hello" / String).map(|name| format!("Hello, {}!", name));
+  let api = filters::api().with(warp::log("mergebot"));
 
-  warp::serve(hello.with(warp::log("mergebot"))).run(([127, 0, 0, 1], 3030))
-                                                .await;
+  warp::serve(api).run(([127, 0, 0, 1], 3030)).await;
+}
+
+/// Warp filters
+pub mod filters {
+  use warp::Filter;
+
+  /// expands to gross filter type
+  macro_rules! filter {() => {impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone}}
+
+  /// The composite warp filter that defines our HTTP api
+  pub fn api(
+    )
+      -> filter!()
+  {
+    hello().or(deploy())
+  }
+
+  /// GET api/v1/hello/:name -> 200 "hello, {name}!"
+  fn hello() -> filter!() {
+    warp::path!("api" / "v1" / "hello" / String)
+         .and(warp::get())
+         .map(|name| format!("hello, {}!", name))
+  }
+
+  /// Initiate a deployment
+  fn deploy() -> filter!() {
+    warp::path!("api" / "v1" / "deploy")
+         .and(warp::post())
+         .and(warp::body::json::<serde_json::Value>())
+         .map(|j| Ok(warp::reply::json(&j)))
+  }
 }
 
 fn init_logger() {
   if env::var_os("RUST_LOG").is_none() {
-    env::set_var("RUST_LOG", "mergebot=trace");
+    env::set_var("RUST_LOG", "mergebot=debug");
   }
 
   pretty_env_logger::init();
