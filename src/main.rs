@@ -94,7 +94,7 @@ pub mod filters {
          .and(warp::post())
          .and(warp::body::form::<slack::SlashCommand>())
          .map(|cmd: slack::SlashCommand| {
-           let out = format!("you are <@{}>, and you sent this to <#{}>: `{} {}`", cmd.user_name, cmd.channel_name, cmd.command, cmd.text);
+           let out = format!("you are <@{}>, and you sent this to <#{}>: `{} {}`", cmd.user_id, cmd.channel_id, cmd.command, cmd.text);
            log::info!("{}", out);
            out
          })

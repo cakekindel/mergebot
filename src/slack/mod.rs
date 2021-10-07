@@ -34,8 +34,6 @@ pub struct SlashCommand {
   pub channel_id: String,
   /// See docs for `channel_id`
   pub team_id: String,
-  /// Name of channel command was used in
-  pub channel_name: String,
   /// A temporary webhook URL that you can use to generate messages responses.
   pub response_url: String,
   /// Slack workspace URL
@@ -44,6 +42,6 @@ pub struct SlashCommand {
   ///
   /// You can prompt users to adhere to a particular format by showing them in the Usage Hint field when creating a command.
   pub text: String,
-  /// The plain text name of the user who triggered the command. As above, do not rely on this field as it is being phased out, use the user_id instead.
-  pub user_name: String,
+  /// The ID of the user who triggered the command.
+  pub user_id: String,
 }
