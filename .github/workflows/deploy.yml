@@ -8,18 +8,22 @@ jobs:
   deploy:
     runs-on: 'ubuntu-latest'
     steps:
-      - uses: 'actions/checkout@v2'
+    - uses: 'actions/checkout@v2'
 
-      - uses: 'digitalocean/action-doctl@v2'
-        with:
-          token: ${{ secrets.DO_TOKEN }}
+    - uses: 'digitalocean/action-doctl@v2'
+      with:
+        token: ${{ secrets.DO_TOKEN }}
 
-      - uses: actions/cache@v2
-        with:
-          path: |
-            ~/.rustup
-            ~/.cargo
-            target
-          key: ${{ runner.os }}-cargo
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.rustup
+          ~/.cargo
+          target
+        key: ${{ runner.os }}-cargo
 
-      - run: 'doctl compute ssh mergebot --verbose --ssh-command "systemctl restart mergebot"'
+    - uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        script: systemctl restart mergebot
