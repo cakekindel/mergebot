@@ -23,4 +23,10 @@ jobs:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
         key: ${{ secrets.KEY }}
-        script: systemctl restart mergebot
+        script: |
+          # Print reboot logs
+          journalctl --since "$(date --iso-8601)" \
+                     --no-pager \
+                     --follow \
+                     --unit mergebot \
+          & systemctl restart mergebot
