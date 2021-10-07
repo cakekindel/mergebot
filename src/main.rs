@@ -50,9 +50,14 @@
                    unsafe_code,
                    unused_crate_dependencies))]
 
+use serde_json as _;
+
 use std::env;
 
 use warp::Filter;
+
+/// Slack models
+pub mod slack;
 
 /// Entry point
 #[tokio::main]
@@ -66,14 +71,14 @@ pub async fn main() {
 
 /// Warp filters
 pub mod filters {
-  use warp::Filter;
+  use super::*;
 
   /// expands to gross filter type
   macro_rules! filter {() => {impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone}}
 
   /// The composite warp filter that defines our HTTP api
   pub fn api() -> filter!() {
-    hello().or(deploy())
+    hello().or(slash_command())
   }
 
   /// GET api/v1/hello/:name -> 200 "hello, {name}!"
@@ -85,13 +90,14 @@ pub mod filters {
   }
 
   /// Initiate a deployment
-  fn deploy() -> filter!() {
-    warp::path!("api" / "v1" / "deploy")
+  fn slash_command() -> filter!() {
+    warp::path!("api" / "v1" / "command")
          .and(warp::post())
-         .and(warp::body::form::<serde_json::Value>())
-         .map(|j| {
-           log::info!("{:?}", serde_json::to_string_pretty(&j).unwrap());
-           Ok(warp::reply::json(&j))
+         .and(warp::body::form::<slack::SlashCommand>())
+         .map(|cmd: slack::SlashCommand| {
+           let out = format!("you are <@{}>, and you sent this to <#{}>: `{} {}`", cmd.user_name, cmd.channel_name, cmd.command, cmd.text);
+           log::info!("{}", out);
+           out
          })
   }
 }
