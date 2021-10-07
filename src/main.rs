@@ -21,7 +21,7 @@
 //! # README
 //! Uses [`cargo-readme`] for README generation -
 //! see `src/lib.rs` and `./README.tpl` for actual documentation source.
-//! 
+//!
 //! # CI/CD
 //! > Note: requires following [conventional commits].
 //!
@@ -42,9 +42,7 @@
 //! [`standard-version`]: https://www.npmjs.com/package/standard-version
 //! [conventional commits]: https://www.conventionalcommits.org/en/v1.0.0/
 
-#![deny(missing_docs,
-        missing_doc_code_examples)]
-
+#![deny(missing_docs, missing_doc_code_examples)]
 #![cfg_attr(not(test),
             forbid(missing_copy_implementations,
                    missing_debug_implementations,
@@ -52,7 +50,26 @@
                    unsafe_code,
                    unused_crate_dependencies))]
 
+use std::env;
+
+use warp::Filter;
+
 /// Entry point
-pub fn main() {
-  println!("bingus")
+#[tokio::main]
+pub async fn main() {
+  init_logger();
+
+  let hello =
+    warp::path!("hello" / String).map(|name| format!("Hello, {}!", name));
+
+  warp::serve(hello.with(warp::log("mergebot"))).run(([127, 0, 0, 1], 3030))
+                                                .await;
+}
+
+fn init_logger() {
+  if env::var_os("RUST_LOG").is_none() {
+    env::set_var("RUST_LOG", "mergebot=trace");
+  }
+
+  pretty_env_logger::init();
 }

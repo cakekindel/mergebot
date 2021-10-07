@@ -18,3 +18,6 @@ categories = []
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+tokio = {version = "1", features = ["full"]}
+warp = "0.3"
+pretty_env_logger = "0.4"

@@ -2,7 +2,7 @@
 [![docs.rs](https://docs.rs/{{PACKAGE}}/badge.svg)](https://docs.rs/{{PACKAGE}}/latest)
 ![Maintenance](https://img.shields.io/badge/maintenance-activly--developed-brightgreen.svg)
 
-# {{PACKAGE}}
+# mergebot
 
 Orion's Rust crate template.
 
