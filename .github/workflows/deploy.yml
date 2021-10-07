@@ -23,14 +23,14 @@ jobs:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
         key: ${{ secrets.KEY }}
+
+        # systemd service on start does git pull, cargo build --release, and then runs binary
         script: |
           # print logs whilst restarting
           journalctl --since now \
                      --no-pager \
                      --follow \
                      --unit mergebot \
-
-          # systemd unit does git pull, cargo build --release, and then runs binary
           & systemctl restart mergebot;
 
           # kill journalctl output when restart done
