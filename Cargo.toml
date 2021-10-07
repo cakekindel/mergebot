@@ -1,0 +1,20 @@
+[package]
+name = "{{PACKAGE}}"
+version = "0.0.0"
+description = ""
+
+edition = "2018"
+authors = ["Orion Kindel <cakekindel@gmail.com>"]
+license = "MIT OR Apache-2.0"
+
+homepage = "{{REPO_URL}}"
+repository = "{{REPO_URL}}"
+readme = "README.md"
+
+keywords = []
+categories = []
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[dependencies]
