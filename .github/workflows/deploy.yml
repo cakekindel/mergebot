@@ -10,10 +10,6 @@ jobs:
     steps:
     - uses: 'actions/checkout@v2'
 
-    - uses: 'digitalocean/action-doctl@v2'
-      with:
-        token: ${{ secrets.DO_TOKEN }}
-
     - uses: actions/cache@v2
       with:
         path: |
@@ -26,4 +22,5 @@ jobs:
       with:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.KEY }}
         script: systemctl restart mergebot
