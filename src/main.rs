@@ -52,6 +52,7 @@
                    unsafe_code,
                    unused_crate_dependencies))]
 
-pub struct Bingus;
-
-pub fn foo() -> Bingus { Bingus }
+/// Entry point
+pub fn main() {
+  println!("bingus")
+}
