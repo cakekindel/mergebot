@@ -25,7 +25,7 @@ jobs:
         key: ${{ secrets.KEY }}
         script: |
           # Print reboot logs
-          journalctl --since "$(date --iso-8601)" \
+          journalctl --since "$(date --iso-8601 --utc)" \
                      --no-pager \
                      --follow \
                      --unit mergebot \
