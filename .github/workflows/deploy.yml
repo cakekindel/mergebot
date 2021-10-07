@@ -8,17 +8,17 @@ jobs:
   deploy:
     runs-on: 'ubuntu-latest'
     steps:
-    - uses: 'actions/checkout@v2'
-      with:
-        token: ${{ secrets.GH_TOKEN }}
+      - uses: 'actions/checkout@v2'
+        with:
+          token: ${{ secrets.GH_TOKEN }}
 
-    - uses: actions/cache@v2
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo
-          target
-        key: ${{ runner.os }}-cargo
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo
 
-    - env: {'DIGITAL_OCEAN_ACCESS_TOKEN': ${{secrets.DO_TOKEN}}}
-      run: 'doctl compute ssh mergebot --verbose --ssh-command "systemctl restart mergebot"'
+      - env: {'DIGITAL_OCEAN_ACCESS_TOKEN': ${{secrets.DO_TOKEN}}}
+        run: 'doctl compute ssh mergebot --verbose --ssh-command "systemctl restart mergebot"'
