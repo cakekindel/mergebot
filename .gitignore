@@ -1,3 +1,4 @@
+deployables.json
 **/*.rs.bk
 /target
 node_modules

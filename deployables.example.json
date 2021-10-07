@@ -1,0 +1,21 @@
+[
+  {
+    "name": "MyApp",
+    "team_id": "T70FCJL9Z",
+    "repos": [
+      {
+        "url": "git@github.com:cakekindel/mergebot_test.git",
+        "name": "mergebot_test",
+        "git_ssh_key": "<private ssh key that has push access to this repo>",
+        "environments": [
+          {
+            "name": "staging",
+            "base": "qa",
+            "target": "staging",
+            "users": [{"id": "U71L81N15", "approver": true}]
+          }
+        ]
+      }
+    ]
+  }
+]

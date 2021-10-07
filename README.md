@@ -4,15 +4,46 @@
 
 # mergebot
 
-Orion's Rust crate template.
+## mergebot
+I'm a slack app triggers approvable deployments for multi-repo applications containing per-environment git branches.
 
-This includes a CI/CD pipeline, README templating, and cargo-make scripts.
+e.g.
+- `github.com/todos-app/backend`
+  - `main` Prod
+  - `qa` QA
+  - `staging` Staging
+- `github.com/todos-app/frontend`
+  - `main` Prod
+  - `qa` QA
+  - `staging` Staging
+
+## Flow
+- User A issues `/deploy foo staging`
+- mergebot checks Deployables (configured via `./deployables.json`, which is ignored from source control) for name == "foo"
+- mergebot checks `foo.repos` for `environments` matching the name "staging"
+- mergebot ensures User A is in `staging.users`
+- mergebot queues a merge job for all repos who have a "staging" environment
+- mergebot sends a slack message targeting all users with `approver == true` & all user groups asking for approval
+- mergebot waits until the users mentioned above have all reacted with :+1:
+- when approval conditions met, mergebot executes merge job (`git switch <target>; git merge <base> --no-edit --ff-only --no-verify; git push --no-verify;`)
 
 ## Setup
-|Type|Name|Value|How-To|
-|--|--|--|--|
-|Github Repo Secret|CARGO_TOKEN|Token issued for your user by crates.io|[How-To](https://doc.rust-lang.org/cargo/reference/publishing.html#before-your-first-publish)|
-|Github Repo Secret|GH_TOKEN|A GitHub PAT|[How-To](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token)|
+Requirements:
+ - [`cargo-make`]
+ - [`ngrok`]
+ - A git repo with multiple branches (_not_ this one!) for testing
+ - A `./deployables.json` file that looks something like `./deployables.example.json`
+
+1. Start a tunnel with `ngrok http 3030` - URL yielded will be referred to as `<ngrok>`
+1. Create a slack app with:
+   - Scopes: `['chat:write', 'commands', 'reactions:read']`
+   - Redirect URI: `<ngrok>/redirect`
+   - Slash command: `/deploy` -> `<ngrok>/api/v1/command`
+1. Install to a slack workspace
+1.
+
+Create a slack app with:
+- Redirect URI: ``
 
 ## cargo-make
 This crate uses [`cargo-make`] for script consistency, in Makefile.toml you'll find:
@@ -24,26 +55,8 @@ This crate uses [`cargo-make`] for script consistency, in Makefile.toml you'll f
                      This is run as a quality gate for all pull requests.
   - `cargo make update-readme`: Regenerate README.md based on `src/lib.rs` and `./README.tpl`.
 
-## README
-Uses [`cargo-readme`] for README generation -
-see `src/lib.rs` and `./README.tpl` for actual documentation source.
-
-## CI/CD
-> Note: requires following [conventional commits].
-
-On Pull Request -> main:
-  - run `cargo make ci` (test && rustfmt --check && clippy)
-
-On Pull Request merge -> main:
-  - Uses [`standard-version`] (bump version & update CHANGELOG)
-  - Pushes `chore(release): vX.X.X`
-  - Pushes tag `vX.X.X`
-
-On tag push:
-  - Publish new GitHub release
-  - Publish new version to crates.io
-
 [`cargo-make`]: https://github.com/sagiegurari/cargo-make/
+[`ngrok`]: https://ngrok.com/
 [`cargo-readme`]: https://github.com/livioribeiro/cargo-readme
 [`standard-version`]: https://www.npmjs.com/package/standard-version
 [conventional commits]: https://www.conventionalcommits.org/en/v1.0.0/
