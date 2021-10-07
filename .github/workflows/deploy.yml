@@ -29,4 +29,5 @@ jobs:
                      --no-pager \
                      --follow \
                      --unit mergebot \
-          & systemctl restart mergebot
+          & systemctl restart mergebot;
+          kill %1;
