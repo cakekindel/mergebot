@@ -88,8 +88,11 @@ pub mod filters {
   fn deploy() -> filter!() {
     warp::path!("api" / "v1" / "deploy")
          .and(warp::post())
-         .and(warp::body::json::<serde_json::Value>())
-         .map(|j| Ok(warp::reply::json(&j)))
+         .and(warp::body::form::<serde_json::Value>())
+         .map(|j| {
+           log::info!("{:?}", serde_json::to_string_pretty(&j).unwrap());
+           Ok(warp::reply::json(&j))
+         })
   }
 }
 
