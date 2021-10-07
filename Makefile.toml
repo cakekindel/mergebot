@@ -26,14 +26,9 @@ command = "cargo"
 args = ["fmt"]
 dependencies = ["install-fmt"]
 
-[tasks.doctest]
-command = "cargo"
-args = ["--locked", "test", "--doc", "--", "--quiet"]
-
 [tasks.test]
 command = "cargo"
 args = ["--locked", "test", "--tests", "--", "--quiet"]
-dependencies = ["doctest"]
 
 [tasks.tdd]
 install_crate = "cargo-watch"

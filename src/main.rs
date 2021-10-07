@@ -72,18 +72,16 @@ pub mod filters {
   macro_rules! filter {() => {impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone}}
 
   /// The composite warp filter that defines our HTTP api
-  pub fn api(
-    )
-      -> filter!()
-  {
+  pub fn api() -> filter!() {
     hello().or(deploy())
   }
 
   /// GET api/v1/hello/:name -> 200 "hello, {name}!"
   fn hello() -> filter!() {
-    warp::path!("api" / "v1" / "hello" / String)
-         .and(warp::get())
-         .map(|name| format!("hello, {}!", name))
+    warp::path!("api" / "v1" / "hello" / String).and(warp::get())
+                                                .map(|name| {
+                                                  format!("hello, {}!", name)
+                                                })
   }
 
   /// Initiate a deployment
