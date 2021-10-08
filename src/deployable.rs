@@ -95,7 +95,7 @@ pub struct JsonFile;
 
 impl Reader for JsonFile {
   fn read(&self) -> Result<Vec<Deployable>, ReadError> {
-    std::fs::read_to_string(std::path::Path::new(""))
+    std::fs::read_to_string(std::path::Path::new("./deployable.json"))
             .map_err(ReadError::Io)
             .and_then(|json| serde_json::from_str(&json).map_err(ReadError::Json))
   }
