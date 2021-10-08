@@ -1,3 +1,4 @@
+.env
 deployables.json
 **/*.rs.bk
 /target

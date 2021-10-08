@@ -119,6 +119,8 @@ fn get_state(
 #[tokio::main]
 pub async fn main() {
   init_logger();
+  dotenv::dotenv().ok();
+
   let state = get_state();
 
   let api = filters::api(state).with(warp::log("mergebot"));
