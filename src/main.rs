@@ -61,6 +61,7 @@
 
 use std::env;
 
+use log as _;
 use serde_json as _;
 use warp::Filter;
 
@@ -73,12 +74,51 @@ pub mod deploy;
 /// Job queue stuff
 pub mod job;
 
+/// App environment
+#[derive(Clone, Debug)]
+pub struct State<JobMsgr: job::Messenger + Sync + Clone + std::fmt::Debug,
+ JobQ: job::Queue + Sync + Clone + std::fmt::Debug,
+ AppReader: deploy::app::Reader + Sync + Clone + std::fmt::Debug> {
+  /// slack signing secret
+  pub slack_signing_secret: String,
+  /// slack api token
+  pub slack_api_token: String,
+  /// notifies approvers
+  pub job_messenger: JobMsgr,
+  /// Job queue
+  pub job_queue: JobQ,
+  /// Reader for deployable app configuration
+  pub app_reader: AppReader,
+}
+
+fn init_logger() {
+  if env::var_os("RUST_LOG").is_none() {
+    env::set_var("RUST_LOG", "mergebot=debug");
+  }
+
+  pretty_env_logger::init();
+}
+
+fn get_state(
+  )
+    -> State<job::SlackMessenger, job::MemQueue, deploy::app::JsonFile>
+{
+  State {
+    slack_signing_secret: env::var("SLACK_SIGNING_SECRET").expect("SLACK_SIGNING_SECRET required"),
+    slack_api_token: env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required"),
+    job_messenger: job::SlackMessenger,
+    job_queue: job::MemQueue,
+    app_reader: deploy::app::JsonFile,
+  }
+}
+
 /// Entry point
 #[tokio::main]
 pub async fn main() {
   init_logger();
+  let state = get_state();
 
-  let api = filters::api().with(warp::log("mergebot"));
+  let api = filters::api(state).with(warp::log("mergebot"));
 
   warp::serve(api).run(([127, 0, 0, 1], 3030)).await;
 }
@@ -94,9 +134,20 @@ pub mod filters {
   /// expands to gross filter type
   macro_rules! filter {() => {impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone}}
 
+  /// expands to gross app state type
+  macro_rules! state {
+    () => {
+      State<
+        impl job::Messenger + Sync + Send + Clone + std::fmt::Debug,
+        impl job::Queue + Sync + Send + Clone + std::fmt::Debug,
+        impl deploy::app::Reader + Sync + Send + Clone + std::fmt::Debug,
+      >
+    }
+  }
+
   /// The composite warp filter that defines our HTTP api
-  pub fn api() -> filter!() {
-    hello().or(slash_command())
+  pub fn api(app_state: state!()) -> filter!() {
+    hello().or(slash_command(app_state))
   }
 
   /// GET api/v1/hello/:name -> 200 "hello, {name}!"
@@ -107,28 +158,32 @@ pub mod filters {
                                                 })
   }
 
+  // [1] - User A issues `/deploy foo staging`
+  // [2] - mergebot checks Apps (configured via `./deployables.json`, which is ignored from source control) for name == "foo"
+  // [3] - mergebot checks `foo.repos` for `environments` matching the name "staging"
+  // [4] - mergebot ensures User A is in `staging.users`
+  // [5] - mergebot queues a merge job for all repos who have a "staging" environment
+  // [6] - mergebot sends a slack message targeting all users with `approver == true` & all user groups asking for approval
+  // [7] - mergebot waits until the users mentioned above have all reacted with :+1:
+  // [8] - when approval conditions met, mergebot executes merge job (`git switch <target>; git merge <base> --no-edit --ff-only --no-verify; git push --no-verify;`)
+
   /// Initiate a deployment
-  fn slash_command() -> filter!() {
+  fn slash_command(mergebot: state!()) -> filter!() {
     warp::path!("api" / "v1" / "command")
          .and(warp::post())
          .and(warp::body::form::<slack::SlashCommand>())
-         .map(|slash: slack::SlashCommand| {
-           let out = deploy::Command::try_from(slash)
-                         .and_then(|cmd| cmd.find_app(deploy::app::JsonFile).map(|app| (cmd, app)))
-                         .map(|(cmd, app)| job::MemQueue.queue(app, cmd))
-                         .map(|job| format!("```{:#?}```", job))
-                         .map_err(|e| format!("Error processing command: {:#?}", e))
-                         .unwrap_or_else(|e| e);
-           log::info!("{}", out);
-           out
+         .map(move |slash: slack::SlashCommand| {
+           deploy::Command::try_from(slash) // [1]
+               .and_then(|cmd| cmd.find_app(&mergebot.app_reader).map(|app| (cmd, app))) // [2], [3], [4]
+               .map(|(cmd, app)| mergebot.job_queue.queue(app, cmd)) // [5]
+               .and_then(|job| {
+                 mergebot.job_messenger.send_message_for_job(&job)
+                     .map_err(|_| deploy::Error::Notification)
+                     .map(|_| job) // TODO: move job state fwd
+               })
+               .map(|job| format!("```{:#?}```", job))
+               .map_err(|e| format!("Error processing command: {:#?}", e))
+               .unwrap_or_else(|e| e)
          })
   }
-}
-
-fn init_logger() {
-  if env::var_os("RUST_LOG").is_none() {
-    env::set_var("RUST_LOG", "mergebot=debug");
-  }
-
-  pretty_env_logger::init();
 }

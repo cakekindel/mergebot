@@ -22,7 +22,7 @@ pub struct Command {
 
 impl Command {
   /// Given a `deployable::Reader`, try to find a deployable application matching the command.
-  pub fn find_app(&self, reader: impl app::Reader) -> Result<App, Error> {
+  pub fn find_app(&self, reader: &impl app::Reader) -> Result<App, Error> {
     use app::*;
     use Error::*;
 
@@ -75,6 +75,8 @@ pub enum Error {
   AppNotFound(String),
   /// Environment not found in application
   EnvNotFound(String, String),
+  /// Failed to notify approvers
+  Notification,
 }
 
 impl TryFrom<slack::SlashCommand> for Command {
