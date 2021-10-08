@@ -51,6 +51,16 @@ pub enum User {
   },
 }
 
+impl User {
+  /// Get user id if this user is not a group
+  pub fn user_id(&self) -> Option<&str> {
+    match self {
+      | User::User { user_id, .. } => Some(user_id),
+      | _ => None,
+    }
+  }
+}
+
 /// A deployable application.
 #[derive(Debug, Ser, De)]
 pub struct Deployable {
@@ -61,4 +71,32 @@ pub struct Deployable {
   pub team_id: String,
   /// Repositories that will be
   pub repos: Vec<Repo>,
+}
+
+/// Errors encounterable while trying to read `deployables.json`
+#[derive(Debug)]
+pub enum ReadError {
+  /// Filesystem error
+  Io(std::io::Error),
+  /// File exists but is not valid json
+  Json(serde_json::Error),
+}
+
+/// A Reader is capable of producing an array of deployables,
+/// presumably from `deployables.json`
+pub trait Reader {
+  /// Read the deployables from some source
+  fn read(&self) -> Result<Vec<Deployable>, ReadError>;
+}
+
+/// ZST that implements Reader for `deployables.json`
+#[derive(Debug, Clone, Copy)]
+pub struct JsonFile;
+
+impl Reader for JsonFile {
+  fn read(&self) -> Result<Vec<Deployable>, ReadError> {
+    std::fs::read_to_string(std::path::Path::new(""))
+            .map_err(ReadError::Io)
+            .and_then(|json| serde_json::from_str(&json).map_err(ReadError::Json))
+  }
 }

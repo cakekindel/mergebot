@@ -34,10 +34,6 @@
 //!    - Redirect URI: `<ngrok>/redirect`
 //!    - Slash command: `/deploy` -> `<ngrok>/api/v1/command`
 //! 1. Install to a slack workspace
-//! 1.
-//!
-//! Create a slack app with:
-//! - Redirect URI: ``
 //!
 //! # cargo-make
 //! This crate uses [`cargo-make`] for script consistency, in Makefile.toml you'll find:
@@ -88,13 +84,58 @@ pub async fn main() {
 #[derive(Debug)]
 pub struct DeployCommand {
   /// Application to deploy
-  pub app: String,
+  pub app_name: String,
   /// Environment to deploy
-  pub env: String,
+  pub env_name: String,
   /// ID of user who initiated deploy
   pub user_id: String,
   /// ID of slack workspace in which deploy was triggered
   pub team_id: String,
+}
+
+impl DeployCommand {
+  /// Given a `deployable::Reader`, try to find a deployable application matching the command.
+  pub fn find_app(&self,
+                  reader: impl deployable::Reader)
+                  -> Result<deployable::Deployable, DeployError> {
+    use deployable::*;
+    use DeployError::*;
+
+    #[allow(clippy::suspicious_operation_groupings)] // clippy is sus
+    let matches_app = |app: &Deployable| -> bool {
+      app.team_id == self.team_id && app.name == self.app_name
+    };
+
+    let matches_team =
+      |apps: Vec<Deployable>| -> Result<Deployable, DeployError> {
+        match apps.into_iter().find(matches_app) {
+          | Some(app) => Ok(app),
+          // don't tell users the app exists in a different team
+          | None => Err(AppNotFound(self.app_name.clone())),
+        }
+      };
+
+    let env_matches = |env: &Mergeable| -> bool {
+      env.name == self.env_name
+      && env.users.iter().any(|u| u.user_id() == Some(&self.user_id))
+    };
+
+    let matches_env_and_user = |app: &Deployable| -> bool {
+      app.repos
+         .iter()
+         .any(|r| r.environments.iter().any(env_matches))
+    };
+
+    reader.read()
+          .map_err(ReadingDeployables)
+          .and_then(matches_team)
+          .and_then(|app| match matches_env_and_user(&app) {
+            | true => Ok(app),
+            | false => {
+              Err(EnvNotFound(self.app_name.clone(), self.env_name.clone()))
+            },
+          })
+  }
 }
 
 /// Any error around the /deploy command
@@ -102,12 +143,14 @@ pub struct DeployCommand {
 pub enum DeployError {
   /// Slash command sent was not deploy
   CommandNotDeploy,
+  /// Error encountered trying to read `deployables.json`
+  ReadingDeployables(deployable::ReadError),
   /// Slash command was malformed (multiple arguments, not enough)
   CommandMalformed,
   /// Application not found in Deployables
   AppNotFound(String),
   /// Environment not found in application
-  EnvNotFound(String),
+  EnvNotFound(String, String),
 }
 
 impl TryFrom<slack::SlashCommand> for DeployCommand {
@@ -119,15 +162,17 @@ impl TryFrom<slack::SlashCommand> for DeployCommand {
              | _ => Err(DeployError::CommandNotDeploy),
            })
            .and_then(|cmd| {
-             match cmd.text.clone().split(" ").collect::<Vec<_>>().as_slice() {
+             match cmd.text.clone().split(' ').collect::<Vec<_>>().as_slice() {
                | [app, env] => Ok((cmd, app.to_string(), env.to_string())),
                | _ => Err(DeployError::CommandMalformed),
              }
            })
-           .map(|(cmd, app, env)| DeployCommand { team_id: cmd.team_id,
-                                                  user_id: cmd.user_id,
-                                                  app,
-                                                  env })
+           .map(|(cmd, app_name, env_name)| DeployCommand { team_id:
+                                                              cmd.team_id,
+                                                            user_id:
+                                                              cmd.user_id,
+                                                            app_name,
+                                                            env_name })
   }
 }
 
@@ -158,8 +203,9 @@ pub mod filters {
          .and(warp::body::form::<slack::SlashCommand>())
          .map(|slash: slack::SlashCommand| {
            let out = DeployCommand::try_from(slash)
+                         .and_then(|dep| dep.find_app(deployable::JsonFile))
+                         .map(|app| format!("found app: {}", app.name))
                          .map_err(|e| format!("Error processing command: {:#?}", e))
-                         .map(|dep| format!("you want to deploy like this: {:#?}", dep))
                          .unwrap_or_else(|e| e);
            log::info!("{}", out);
            out
