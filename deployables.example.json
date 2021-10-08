@@ -1,7 +1,7 @@
 [
   {
     "name": "MyApp",
-    "team_id": "T70FCJL9Z",
+    "team_id": "_",
     "repos": [
       {
         "url": "git@github.com:cakekindel/mergebot_test.git",
@@ -12,7 +12,10 @@
             "name": "staging",
             "base": "qa",
             "target": "staging",
-            "users": [{"id": "U71L81N15", "approver": true}]
+            "users": [
+              {"user_id": "_", "approver": true},
+              {"group_id": "_", "approver": true}
+            ]
           }
         ]
       }
