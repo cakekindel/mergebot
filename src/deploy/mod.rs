@@ -28,7 +28,8 @@ impl Command {
 
     #[allow(clippy::suspicious_operation_groupings)] // clippy is sus
     let matches_app = |app: &App| -> bool {
-      app.team_id == self.team_id && app.name.to_lowercase().trim() == self.app_name.to_lowercase().trim()
+      app.team_id == self.team_id
+      && app.name.to_lowercase().trim() == self.app_name.to_lowercase().trim()
     };
 
     let matches_team = |apps: Vec<App>| -> Result<App, Error> {
@@ -76,7 +77,7 @@ pub enum Error {
   /// Environment not found in application
   EnvNotFound(String, String),
   /// Failed to notify approvers
-  Notification(reqwest::Error),
+  Notification(crate::job::MessagingError),
 }
 
 impl TryFrom<slack::SlashCommand> for Command {

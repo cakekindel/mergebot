@@ -182,7 +182,7 @@ pub mod filters {
                .and_then(|job| {
                  mergebot.job_messenger.send_message_for_job(&mergebot.reqwest_client, &mergebot.slack_api_token, &job)
                      .map_err(deploy::Error::Notification)
-                     .map(|_| job) // TODO: move job state fwd
+                     .map(|message_ts| mergebot.job_queue.set_state(job.id, job::State::Notified{message_ts}))
                }) // [6]
                .map(|job| format!("```{:#?}```", job))
                .map_err(|e| format!("Error processing command: {:#?}", e))

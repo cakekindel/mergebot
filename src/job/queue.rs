@@ -26,6 +26,17 @@ pub trait Queue {
 
   /// Queue a new job, yields a copy of the created job.
   fn queue(&self, app: App, command: Command) -> Job;
+
+  /// Update the state of a job
+  fn set_state(&self, id: impl AsRef<str>, state: State) -> Option<Job> {
+    self.update(id, |j| j.state = state)
+  }
+
+  /// Apply some mutation to a job
+  fn update(&self,
+            id: impl AsRef<str>,
+            f: impl FnOnce(&mut Job))
+            -> Option<Job>;
 }
 
 /// In-memory implementor of the Queue trait.
@@ -43,6 +54,21 @@ impl Queue for MemQueue {
   fn dequeue(&self) -> Option<Job> {
     let queue = &mut queue_lock();
     queue.pop_front()
+  }
+
+  fn update(&self,
+            id: impl AsRef<str>,
+            f: impl FnOnce(&mut Job))
+            -> Option<Job> {
+    let queue = &mut queue_lock();
+
+    queue.iter_mut()
+         .find(|j| &j.id == id.as_ref())
+         .map(|j| {
+           f(j);
+           j
+         })
+         .cloned()
   }
 
   fn peek(&self) -> Option<Job> {
