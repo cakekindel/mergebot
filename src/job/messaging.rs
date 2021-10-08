@@ -90,6 +90,7 @@ impl Messenger for SlackMessenger {
                   "channel": job.app.notification_channel_id,
                   "blocks": serde_json::to_value(blocks).unwrap(),
                 }))
+           .header("authorization", format!("Bearer {}", slack_token))
           .send()
           .and_then(|rep| rep.error_for_status())
           .and_then(|rep| rep.json::<Rep>())
