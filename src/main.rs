@@ -53,11 +53,11 @@
 
 #![deny(missing_docs, missing_doc_code_examples)]
 #![cfg_attr(not(test),
-            forbid(missing_copy_implementations,
-                   missing_debug_implementations,
+            forbid(missing_debug_implementations,
                    unreachable_pub,
                    unsafe_code,
                    unused_crate_dependencies))]
+#![cfg_attr(not(test), deny(missing_copy_implementations))]
 
 use std::env;
 
@@ -69,6 +69,9 @@ pub mod slack;
 
 /// Deployment stuff
 pub mod deploy;
+
+/// Job queue stuff
+pub mod job;
 
 /// Entry point
 #[tokio::main]
@@ -83,6 +86,8 @@ pub async fn main() {
 /// Warp filters
 pub mod filters {
   use std::convert::TryFrom;
+
+  use job::Queue;
 
   use super::*;
 
@@ -109,8 +114,9 @@ pub mod filters {
          .and(warp::body::form::<slack::SlashCommand>())
          .map(|slash: slack::SlashCommand| {
            let out = deploy::Command::try_from(slash)
-                         .and_then(|dep| dep.find_app(deploy::app::JsonFile))
-                         .map(|app| format!("found app: {}", app.name))
+                         .and_then(|cmd| cmd.find_app(deploy::app::JsonFile).map(|app| (cmd, app)))
+                         .map(|(cmd, app)| job::MemQueue.queue(app, cmd))
+                         .map(|job| format!("```{:#?}```", job))
                          .map_err(|e| format!("Error processing command: {:#?}", e))
                          .unwrap_or_else(|e| e);
            log::info!("{}", out);

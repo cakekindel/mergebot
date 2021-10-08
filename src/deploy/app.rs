@@ -1,11 +1,11 @@
 use serde::{Deserialize as De, Serialize as Ser};
 
 /// A git branch
-#[derive(Debug, Ser, De)]
+#[derive(Clone, Debug, Ser, De)]
 pub struct Branch(pub String);
 
 /// A branch diff that, when merged, triggers a deploy
-#[derive(Debug, Ser, De)]
+#[derive(Clone, Debug, Ser, De)]
 pub struct Mergeable {
   /// Pretty name of the environment. Commands will be matched against this.
   /// Must not contain spaces.
@@ -19,7 +19,7 @@ pub struct Mergeable {
 }
 
 /// A git repository, containing a branch for each environment
-#[derive(Debug, Ser, De)]
+#[derive(Clone, Debug, Ser, De)]
 pub struct Repo {
   /// Remote URL of the repo (must be SSH)
   pub url: String,
@@ -32,7 +32,7 @@ pub struct Repo {
 }
 
 /// A user who can initiate or will be asked to approve
-#[derive(Debug, Ser, De)]
+#[derive(Clone, Debug, Ser, De)]
 #[serde(untagged)]
 pub enum User {
   /// A single user
@@ -62,7 +62,7 @@ impl User {
 }
 
 /// A deployable application.
-#[derive(Debug, Ser, De)]
+#[derive(Clone, Debug, Ser, De)]
 pub struct App {
   /// Pretty name of the app (for displaying and matching commands against).
   /// Must not contain spaces.

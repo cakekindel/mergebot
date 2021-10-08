@@ -8,7 +8,7 @@ use crate::slack;
 pub mod app;
 
 /// Struct representing a parsed, well-formed /deploy command
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Command {
   /// Application to deploy
   pub app_name: String,
