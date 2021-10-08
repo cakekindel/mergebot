@@ -59,6 +59,23 @@ impl User {
       | _ => None,
     }
   }
+
+  /// Returns whether this user is a required approver for deployments
+  pub fn is_approver(&self) -> bool {
+    match self {
+      User::User {approver, ..} => *approver,
+      User::Group {..} => true,
+    }
+  }
+
+  /// Get the slack syntax for directly @ing this user
+  pub fn to_at(&self) -> String {
+    match self {
+      User::User {user_id, ..} => format!("<@{}>", user_id),
+      User::Group {group_id, min_approvers: 1, ..} => format!("1 member of <!subteam^{}>", group_id),
+      User::Group {group_id, min_approvers, ..} => format!("{} members of <!subteam^{}>", min_approvers, group_id),
+    }
+  }
 }
 
 /// A deployable application.

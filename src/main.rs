@@ -89,6 +89,8 @@ pub struct State<JobMsgr: job::Messenger + Sync + Clone + std::fmt::Debug,
   pub job_queue: JobQ,
   /// Reader for deployable app configuration
   pub app_reader: AppReader,
+  /// HTTP request client
+  pub reqwest_client: reqwest::blocking::Client,
 }
 
 fn init_logger() {
@@ -109,6 +111,7 @@ fn get_state(
     job_messenger: job::SlackMessenger,
     job_queue: job::MemQueue,
     app_reader: deploy::app::JsonFile,
+    reqwest_client: reqwest::blocking::Client::new(),
   }
 }
 
@@ -177,8 +180,8 @@ pub mod filters {
                .and_then(|cmd| cmd.find_app(&mergebot.app_reader).map(|app| (cmd, app))) // [2], [3], [4]
                .map(|(cmd, app)| mergebot.job_queue.queue(app, cmd)) // [5]
                .and_then(|job| {
-                 mergebot.job_messenger.send_message_for_job(&job)
-                     .map_err(|_| deploy::Error::Notification)
+                 mergebot.job_messenger.send_message_for_job(&mergebot.reqwest_client, &mergebot.slack_api_token, &job)
+                     .map_err(deploy::Error::Notification)
                      .map(|_| job) // TODO: move job state fwd
                })
                .map(|job| format!("```{:#?}```", job))
