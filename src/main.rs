@@ -101,6 +101,7 @@ fn init_logger() {
   pretty_env_logger::init();
 }
 
+/// Spin up the actual app state
 fn get_state(
   )
     -> State<job::SlackMessenger, job::MemQueue, deploy::app::JsonFile>
@@ -119,6 +120,7 @@ fn get_state(
 #[tokio::main]
 pub async fn main() {
   init_logger();
+
   dotenv::dotenv().ok();
 
   let state = get_state();
@@ -132,12 +134,22 @@ pub async fn main() {
 pub mod filters {
   use std::convert::TryFrom;
 
-  use job::Queue;
+  use warp::{reject::{Reject, Rejection},
+             reply::Reply};
 
   use super::*;
 
+  /// 401 Unauthorized rejection
+  #[derive(Debug)]
+  struct Unauthorized;
+  impl Reject for Unauthorized {}
+
   /// expands to gross filter type
-  macro_rules! filter {() => {impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone}}
+  macro_rules! filter {
+    () => {impl Filter<Extract = impl Reply, Error = Rejection> + Clone};
+    ($reply: ty) => {impl Filter<Extract = $reply, Error = Rejection> + Clone};
+    ($reply: ty, $reject: ty) => {impl Filter<Extract = $reply, Error = $reject> + Clone};
+  }
 
   /// expands to gross app state type
   macro_rules! state {
@@ -150,13 +162,47 @@ pub mod filters {
     }
   }
 
+  async fn handle_unauthorized(err: Rejection)
+                               -> Result<impl Reply, Rejection> {
+    if err.find::<Unauthorized>().is_some() {
+      Ok(warp::reply::with_status("", http::StatusCode::UNAUTHORIZED))
+    } else {
+      Err(err)
+    }
+  }
+
   /// The composite warp filter that defines our HTTP api
   pub fn api(app_state: state!()) -> filter!() {
-    hello().or(slash_command(app_state))
+    let handle_command =
+      slack_request_authentic().and(slash_command(app_state));
+    hello().or(handle_command).recover(handle_unauthorized)
+  }
+
+  /// https://api.slack.com/authentication/verifying-requests-from-slack
+  fn slack_request_authentic() -> filter!((), Rejection) {
+    warp::filters::body::bytes()
+        .and(warp::filters::header::value("X-Slack-Request-Timestamp"))
+        .and(warp::filters::header::value("X-Slack-Signature"))
+        .and_then(|bytes: bytes::Bytes, ts: http::HeaderValue, inbound_sig: http::HeaderValue| async move {
+          use sha2::Digest;
+
+          let ts = ts.to_str().unwrap();
+          let inbound_sig = inbound_sig.to_str().unwrap();
+          let base_string = [b"v0:", ts.as_bytes(), b":", &bytes].concat();
+          let hash = sha2::Sha256::digest(&base_string);
+          let sig = [b"v0={}", &hash[..]].concat();
+
+          if sig == inbound_sig.as_bytes() {
+            Ok(())
+          } else {
+            Err(warp::reject::custom(Unauthorized))
+          }
+        })
+        .untuple_one()
   }
 
   /// GET api/v1/hello/:name -> 200 "hello, {name}!"
-  fn hello() -> filter!() {
+  fn hello() -> filter!(impl Reply) {
     warp::path!("api" / "v1" / "hello" / String).and(warp::get())
                                                 .map(|name| {
                                                   format!("hello, {}!", name)
@@ -173,7 +219,7 @@ pub mod filters {
   // [8] - when approval conditions met, mergebot executes merge job (`git switch <target>; git merge <base> --no-edit --ff-only --no-verify; git push --no-verify;`)
 
   /// Initiate a deployment
-  fn slash_command(mergebot: state!()) -> filter!() {
+  fn slash_command(mergebot: state!()) -> filter!((impl Reply,)) {
     warp::path!("api" / "v1" / "command")
          .and(warp::post())
          .and(warp::body::form::<slack::SlashCommand>())

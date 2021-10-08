@@ -48,7 +48,7 @@ pub struct MemQueue;
 impl Queue for MemQueue {
   fn lookup(&self, id: impl AsRef<str>) -> Option<Job> {
     let queue = &queue_lock();
-    queue.iter().find(|j| &j.id == id.as_ref()).cloned()
+    queue.iter().find(|j| j.id == id.as_ref()).cloned()
   }
 
   fn dequeue(&self) -> Option<Job> {
@@ -63,7 +63,7 @@ impl Queue for MemQueue {
     let queue = &mut queue_lock();
 
     queue.iter_mut()
-         .find(|j| &j.id == id.as_ref())
+         .find(|j| j.id == id.as_ref())
          .map(|j| {
            f(j);
            j

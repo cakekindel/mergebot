@@ -23,18 +23,17 @@ fn fmt_approvers(approvers: &[&deploy::app::User]) -> String {
     return usr.to_at();
   }
 
-  approvers.into_iter().map(|user| user.to_at()).rfold(
-                                                       String::new(),
-                                                       |msg, at| {
-                                                         if &msg == "" {
+  approvers.iter()
+           .map(|user| user.to_at())
+           .rfold(String::new(), |msg, at| {
+             if msg.is_empty() {
                format!("& {}", at)
              } else if msg.starts_with('&') {
                format!("{} {}", at, msg)
              } else {
                format!("{}, {}", at, msg)
              }
-                                                       },
-  )
+           })
 }
 
 #[derive(Clone, Ser, De)]
@@ -69,7 +68,7 @@ impl Messenger for SlackMessenger {
                    })
                    .collect::<Vec<_>>();
     let approvers = users.iter()
-                         .map(|u| *u)
+                         .copied()
                          .filter(|u| u.is_approver())
                          .collect::<Vec<_>>();
 
