@@ -73,15 +73,17 @@ impl Messenger for SlackMessenger {
                          .filter(|u| u.is_approver())
                          .collect::<Vec<_>>();
 
-    let blocks = {
+    let blocks: Vec<slack_blocks::Block> = {
       use slack_blocks::blox::*;
 
-      blox! {
+      let section = blox! {
         <section_block>
           <text kind=mrkdwn>{format!("<!here> <@{}> has requested a deployment for {} to {}.", job.command.user_id, job.app.name, job.command.env_name)}</text>
           <text kind=mrkdwn>{format!("I need {} to this message with :+1: in order to continue.", fmt_approvers(&approvers))}</text>
         </section_block>
-      }
+      };
+
+      vec![section.into()]
     };
 
     client.post("https://slack.com/api/chat.postMessage")
