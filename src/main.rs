@@ -13,7 +13,7 @@
 //!
 //! # Flow
 //! - User A issues `/deploy foo staging`
-//! - mergebot checks Deployables (configured via `./deployables.json`, which is ignored from source control) for name == "foo"
+//! - mergebot checks Apps (configured via `./deployables.json`, which is ignored from source control) for name == "foo"
 //! - mergebot checks `foo.repos` for `environments` matching the name "staging"
 //! - mergebot ensures User A is in `staging.users`
 //! - mergebot queues a merge job for all repos who have a "staging" environment
@@ -59,7 +59,7 @@
                    unsafe_code,
                    unused_crate_dependencies))]
 
-use std::{convert::TryFrom, env};
+use std::env;
 
 use serde_json as _;
 use warp::Filter;
@@ -67,8 +67,8 @@ use warp::Filter;
 /// Slack models
 pub mod slack;
 
-/// Models for local configuration file `./deployables.json`
-pub mod deployable;
+/// Deployment stuff
+pub mod deploy;
 
 /// Entry point
 #[tokio::main]
@@ -80,104 +80,10 @@ pub async fn main() {
   warp::serve(api).run(([127, 0, 0, 1], 3030)).await;
 }
 
-/// Struct representing a parsed, well-formed /deploy command
-#[derive(Debug)]
-pub struct DeployCommand {
-  /// Application to deploy
-  pub app_name: String,
-  /// Environment to deploy
-  pub env_name: String,
-  /// ID of user who initiated deploy
-  pub user_id: String,
-  /// ID of slack workspace in which deploy was triggered
-  pub team_id: String,
-}
-
-impl DeployCommand {
-  /// Given a `deployable::Reader`, try to find a deployable application matching the command.
-  pub fn find_app(&self,
-                  reader: impl deployable::Reader)
-                  -> Result<deployable::Deployable, DeployError> {
-    use deployable::*;
-    use DeployError::*;
-
-    #[allow(clippy::suspicious_operation_groupings)] // clippy is sus
-    let matches_app = |app: &Deployable| -> bool {
-      app.team_id == self.team_id && app.name == self.app_name
-    };
-
-    let matches_team =
-      |apps: Vec<Deployable>| -> Result<Deployable, DeployError> {
-        match apps.into_iter().find(matches_app) {
-          | Some(app) => Ok(app),
-          // don't tell users the app exists in a different team
-          | None => Err(AppNotFound(self.app_name.clone())),
-        }
-      };
-
-    let env_matches = |env: &Mergeable| -> bool {
-      env.name == self.env_name
-      && env.users.iter().any(|u| u.user_id() == Some(&self.user_id))
-    };
-
-    let matches_env_and_user = |app: &Deployable| -> bool {
-      app.repos
-         .iter()
-         .any(|r| r.environments.iter().any(env_matches))
-    };
-
-    reader.read()
-          .map_err(ReadingDeployables)
-          .and_then(matches_team)
-          .and_then(|app| match matches_env_and_user(&app) {
-            | true => Ok(app),
-            | false => {
-              Err(EnvNotFound(self.app_name.clone(), self.env_name.clone()))
-            },
-          })
-  }
-}
-
-/// Any error around the /deploy command
-#[derive(Debug)]
-pub enum DeployError {
-  /// Slash command sent was not deploy
-  CommandNotDeploy,
-  /// Error encountered trying to read `deployables.json`
-  ReadingDeployables(deployable::ReadError),
-  /// Slash command was malformed (multiple arguments, not enough)
-  CommandMalformed,
-  /// Application not found in Deployables
-  AppNotFound(String),
-  /// Environment not found in application
-  EnvNotFound(String, String),
-}
-
-impl TryFrom<slack::SlashCommand> for DeployCommand {
-  type Error = DeployError;
-
-  fn try_from(cmd: slack::SlashCommand) -> Result<Self, Self::Error> {
-    Ok(cmd).and_then(|cmd| match cmd.command.as_str() {
-             | "/deploy" => Ok(cmd),
-             | _ => Err(DeployError::CommandNotDeploy),
-           })
-           .and_then(|cmd| {
-             match cmd.text.clone().split(' ').collect::<Vec<_>>().as_slice() {
-               | [app, env] => Ok((cmd, app.to_string(), env.to_string())),
-               | _ => Err(DeployError::CommandMalformed),
-             }
-           })
-           .map(|(cmd, app_name, env_name)| DeployCommand { team_id:
-                                                              cmd.team_id,
-                                                            user_id:
-                                                              cmd.user_id,
-                                                            app_name,
-                                                            env_name })
-  }
-}
-
 /// Warp filters
 pub mod filters {
+  use std::convert::TryFrom;
+
   use super::*;
 
   /// expands to gross filter type
@@ -202,8 +108,8 @@ pub mod filters {
          .and(warp::post())
          .and(warp::body::form::<slack::SlashCommand>())
          .map(|slash: slack::SlashCommand| {
-           let out = DeployCommand::try_from(slash)
-                         .and_then(|dep| dep.find_app(deployable::JsonFile))
+           let out = deploy::Command::try_from(slash)
+                         .and_then(|dep| dep.find_app(deploy::app::JsonFile))
                          .map(|app| format!("found app: {}", app.name))
                          .map_err(|e| format!("Error processing command: {:#?}", e))
                          .unwrap_or_else(|e| e);

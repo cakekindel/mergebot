@@ -63,12 +63,17 @@ impl User {
 
 /// A deployable application.
 #[derive(Debug, Ser, De)]
-pub struct Deployable {
-  /// Pretty name of the deployable (for displaying and matching commands against).
+pub struct App {
+  /// Pretty name of the app (for displaying and matching commands against).
   /// Must not contain spaces.
   pub name: String,
+
   /// Slack workspace ID that `/deploy` is allowed in
   pub team_id: String,
+
+  /// Slack channel to send notifications to
+  pub notification_channel_id: String,
+
   /// Repositories that will be
   pub repos: Vec<Repo>,
 }
@@ -86,7 +91,7 @@ pub enum ReadError {
 /// presumably from `deployables.json`
 pub trait Reader {
   /// Read the deployables from some source
-  fn read(&self) -> Result<Vec<Deployable>, ReadError>;
+  fn read(&self) -> Result<Vec<App>, ReadError>;
 }
 
 /// ZST that implements Reader for `deployables.json`
@@ -94,7 +99,7 @@ pub trait Reader {
 pub struct JsonFile;
 
 impl Reader for JsonFile {
-  fn read(&self) -> Result<Vec<Deployable>, ReadError> {
+  fn read(&self) -> Result<Vec<App>, ReadError> {
     std::fs::read_to_string(std::path::Path::new("./deployables.json"))
             .map_err(ReadError::Io)
             .and_then(|json| serde_json::from_str(&json).map_err(ReadError::Json))
