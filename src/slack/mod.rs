@@ -21,7 +21,10 @@ pub fn request_authentic(state: &'static crate::State,
 
   let sig = mac.finalize().into_bytes()[..].to_vec();
 
-  let valid = Some(&sig) == inbound_sig.strip_prefix("v0=").and_then(|hash| hex::decode(hash).ok()).as_ref();
+  let valid = Some(&sig)
+              == inbound_sig.strip_prefix("v0=")
+                            .and_then(|hash| hex::decode(hash).ok())
+                            .as_ref();
 
   if !valid {
     log::info!(r#"Slack request invalid.

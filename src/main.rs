@@ -184,7 +184,8 @@ pub mod filters {
 
   /// The composite warp filter that defines our HTTP api
   pub fn api(state: fn() -> StateFilter) -> filter!() {
-    hello().or(slash_command(state)).recover(handle_unauthorized)
+    hello().or(slash_command(state))
+           .recover(handle_unauthorized)
   }
 
   /// https://api.slack.com/authentication/verifying-requests-from-slack
