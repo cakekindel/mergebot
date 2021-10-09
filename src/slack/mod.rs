@@ -19,9 +19,9 @@ pub fn request_authentic(state: &'static crate::State,
     HmacSha256::new_from_slice(state.slack_signing_secret.as_bytes()).unwrap();
   mac.update(&base_string);
 
-  let sig = [b"v0={}", &mac.finalize().into_bytes()[..]].concat();
+  let sig = mac.finalize().into_bytes()[..].to_vec();
 
-  let valid = Ok(&sig) == hex::decode(inbound_sig).as_ref();
+  let valid = Some(&sig) == inbound_sig.strip_prefix("v0=").and_then(|hash| hex::decode(hash).ok()).as_ref();
 
   if !valid {
     log::info!(r#"Slack request invalid.
