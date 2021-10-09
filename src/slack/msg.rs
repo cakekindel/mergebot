@@ -40,14 +40,14 @@ impl Rep {
     let RepRaw { ts, channel, ok, error } = raw;
 
     match ok {
-      | true => ts.ok_or(Error::Other("expected ts to be present".into()))
+      | true => ts.ok_or_else(|| Error::Other("expected ts to be present".into()))
                   .and_then(|ts| {
-                    channel.ok_or(Error::Other("expected channel to be present".into()))
+                    channel.ok_or_else(|| Error::Other("expected channel to be present".into()))
                            .map(|channel| (channel, ts))
                   })
                   .map(|(channel, ts)| Id { channel, ts })
                   .map(|id| Rep { id }),
-      | false => Err(Error::Slack(error.unwrap_or("no error".into()))),
+      | false => Err(Error::Slack(error.unwrap_or_else(|| "no error".into()))),
     }
   }
 }
