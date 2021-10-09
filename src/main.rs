@@ -109,7 +109,7 @@ lazy_static::lazy_static! {
   };
 }
 
-type StateFilter = warp::filters::BoxedFilter<(&'static State, )>;
+type StateFilter = warp::filters::BoxedFilter<(&'static State,)>;
 
 fn init_logger() {
   if env::var_os("RUST_LOG").is_none() {
@@ -153,7 +153,7 @@ pub async fn main() {
 
 /// Warp filters
 pub mod filters {
-  use std::convert::{TryFrom};
+  use std::convert::TryFrom;
 
   use warp::{reject::{Reject, Rejection},
              reply::Reply};
@@ -188,27 +188,15 @@ pub mod filters {
     hello().or(handle_command).recover(handle_unauthorized)
   }
 
-
   /// https://api.slack.com/authentication/verifying-requests-from-slack
-  fn slack_request_authentic(f: StateFilter) -> filter!((), Rejection) {
-    warp::filters::body::bytes()
-        .and(f)
+  fn slack_request_authentic(mergebot_state: StateFilter)
+                             -> filter!((), Rejection) {
+    mergebot_state
+        .and(warp::filters::body::bytes())
         .and(warp::filters::header::value("X-Slack-Request-Timestamp"))
         .and(warp::filters::header::value("X-Slack-Signature"))
-        .and_then(|bytes: bytes::Bytes, state: &'static State, ts: http::HeaderValue, inbound_sig: http::HeaderValue| async move {
-          use sha2::{Sha256};
-          use hmac::{Hmac, Mac, NewMac};
-
-          type HmacSha256 = Hmac<Sha256>;
-
-          let ts = ts.to_str().unwrap();
-          let inbound_sig = inbound_sig.to_str().unwrap();
-          let base_string = [b"v0:", ts.as_bytes(), b":", &bytes].concat();
-          let mut mac = HmacSha256::new_from_slice(state.slack_signing_secret.as_bytes()).unwrap();
-          mac.update(&base_string);
-          let sig = [b"v0={}", &mac.finalize().into_bytes()[..]].concat();
-
-          if sig == inbound_sig.as_bytes() {
+        .and_then(|state, body, ts, sig| async move {
+          if slack::request_authentic(state, body, ts, sig) {
             Ok(())
           } else {
             Err(warp::reject::custom(Unauthorized))

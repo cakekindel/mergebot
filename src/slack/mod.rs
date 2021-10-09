@@ -1,5 +1,45 @@
 use serde::{Deserialize as De, Serialize as Ser};
 
+/// Validate an incoming HTTP request from slack
+pub fn request_authentic(state: &'static crate::State,
+                         bytes: bytes::Bytes,
+                         ts: http::HeaderValue,
+                         inbound_sig: http::HeaderValue)
+                         -> bool {
+  use hmac::{Hmac, Mac, NewMac};
+  use sha2::Sha256;
+
+  type HmacSha256 = Hmac<Sha256>;
+
+  let ts = ts.to_str().unwrap();
+  let inbound_sig = inbound_sig.to_str().unwrap();
+  let base_string = [b"v0:", ts.as_bytes(), b":", &bytes].concat();
+
+  let mut mac =
+    HmacSha256::new_from_slice(state.slack_signing_secret.as_bytes()).unwrap();
+  mac.update(&base_string);
+
+  let sig = [b"v0={}", &mac.finalize().into_bytes()[..]].concat();
+
+  let valid = sig == inbound_sig.as_bytes();
+
+  if !valid {
+    log::info!(r#"Slack request invalid.
+                  timestamp: {}
+                  body: {}
+                  incoming signature: {}
+                  signing key: {}
+                  generated signature: {}"#,
+               ts,
+               String::from_utf8_lossy(&bytes),
+               String::from_utf8_lossy(&sig),
+               state.slack_signing_secret,
+               String::from_utf8_lossy(&sig));
+  }
+
+  valid
+}
+
 /// Payload sent by slack on slash commands.
 ///
 /// [https://api.slack.com/interactivity/slash-commands#responding_to_commands]

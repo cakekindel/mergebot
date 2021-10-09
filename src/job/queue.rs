@@ -48,10 +48,7 @@ impl Queue for MemQueue {
     queue.pop_front()
   }
 
-  fn set_state(&self,
-            id: &str,
-            state: State,)
-            -> Option<Job> {
+  fn set_state(&self, id: &str, state: State) -> Option<Job> {
     let queue = &mut queue_lock();
 
     queue.iter_mut()
