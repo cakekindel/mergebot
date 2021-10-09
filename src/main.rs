@@ -184,26 +184,23 @@ pub mod filters {
 
   /// The composite warp filter that defines our HTTP api
   pub fn api(state: fn() -> StateFilter) -> filter!() {
-    let handle_command =
-      slack_request_authentic(state()).and(slash_command(state()));
-    hello().or(handle_command).recover(handle_unauthorized)
+    hello().or(slash_command(state)).recover(handle_unauthorized)
   }
 
   /// https://api.slack.com/authentication/verifying-requests-from-slack
   fn slack_request_authentic(mergebot_state: StateFilter)
-                             -> filter!((), Rejection) {
+                             -> filter!((bytes::Bytes,), Rejection) {
     mergebot_state
         .and(warp::filters::body::bytes())
         .and(warp::filters::header::value("X-Slack-Request-Timestamp"))
         .and(warp::filters::header::value("X-Slack-Signature"))
-        .and_then(|state, body, ts, sig| async move {
-          if slack::request_authentic(state, body, ts, sig) {
-            Ok(())
+        .and_then(|state, body: bytes::Bytes, ts, sig| async move {
+          if slack::request_authentic(state, body.clone(), ts, sig) {
+            Ok(body)
           } else {
             Err(warp::reject::custom(Unauthorized))
           }
         })
-        .untuple_one()
   }
 
   /// GET api/v1/hello/:name -> 200 "hello, {name}!"
@@ -224,23 +221,31 @@ pub mod filters {
   // [8] - when approval conditions met, mergebot executes merge job (`git switch <target>; git merge <base> --no-edit --ff-only --no-verify; git push --no-verify;`)
 
   /// Initiate a deployment
-  fn slash_command(f: StateFilter) -> filter!((impl Reply,)) {
+  fn slash_command(state: fn() -> StateFilter) -> filter!((impl Reply,)) {
     warp::path!("api" / "v1" / "command")
-         .and(f)
          .and(warp::post())
-         .and(warp::body::form::<slack::SlashCommand>())
-         .map(move |mergebot: &'static State, slash: slack::SlashCommand| {
-           deploy::Command::try_from(slash) // [1]
-               .and_then(|cmd| cmd.find_app(&mergebot.app_reader).map(|app| (cmd, app))) // [2], [3], [4]
-               .map(|(cmd, app)| mergebot.job_queue.queue(app, cmd)) // [5]
-               .and_then(|job| {
-                 mergebot.job_messenger.send_message_for_job(&mergebot.reqwest_client, &mergebot.slack_api_token, &job)
-                     .map_err(deploy::Error::Notification)
-                     .map(|message_ts| mergebot.job_queue.set_state(&job.id, job::State::Notified{message_ts}))
-               }) // [6]
-               .map(|job| format!("```{:#?}```", job))
-               .map_err(|e| format!("Error processing command: {:#?}", e))
-               .unwrap_or_else(|e| e)
+         .and(slack_request_authentic(state()))
+         .and(state())
+         .and_then(|body: bytes::Bytes, mergebot: &'static State| async move {
+           serde_urlencoded::from_bytes::<slack::SlashCommand>(&body)
+             .map_err(|e| {
+               log::error!("{:#?}", e);
+               warp::reply::with_status(String::new(), http::StatusCode::BAD_REQUEST)
+             })
+             .and_then(|slash| {
+               deploy::Command::try_from(slash) // [1]
+                   .and_then(|cmd| cmd.find_app(&mergebot.app_reader).map(|app| (cmd, app))) // [2], [3], [4]
+                   .map(|(cmd, app)| mergebot.job_queue.queue(app, cmd)) // [5]
+                   .and_then(|job| {
+                     mergebot.job_messenger.send_message_for_job(&mergebot.reqwest_client, &mergebot.slack_api_token, &job)
+                         .map_err(deploy::Error::Notification)
+                         .map(|message_ts| mergebot.job_queue.set_state(&job.id, job::State::Notified{message_ts}))
+                   }) // [6]
+                   .map(|job| warp::reply::with_status(format!("```{:#?}```", job), http::StatusCode::OK))
+                   .map_err(|e| warp::reply::with_status(format!("Error processing command: {:#?}", e), http::StatusCode::OK))
+             })
+             .map(|rep| Ok(rep) as Result<warp::reply::WithStatus<String>, warp::reject::Rejection>)
+             .unwrap_or_else(|e| Ok(e))
          })
   }
 }
