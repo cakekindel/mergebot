@@ -3,9 +3,38 @@ use serde::{Deserialize as De, Serialize as Ser};
 /// Groups API
 pub mod groups;
 
+/// Sending messages
+pub mod msg;
+
+/// Slack API result
+pub type Result<T> = core::result::Result<T, self::Error>;
+
+/// Errors encounterable by the slack api
+#[derive(Debug)]
+pub enum Error {
+  /// Error sending, establishing http connection, deserializing, etc.
+  Http(reqwest::Error),
+
+  /// Slack got our request but didn't like it
+  Slack(String),
+
+  /// Some other error
+  Other(String),
+}
+
 /// Represents the real slack API, makes HTTP requests
-#[derive(Clone, Copy, Debug)]
-pub struct Api;
+#[derive(Clone, Debug)]
+pub struct Api {
+  token: String,
+  client: &'static reqwest::blocking::Client,
+}
+
+impl Api {
+  /// Create a new instance
+  pub fn new(token: &str, client: &'static reqwest::blocking::Client) -> Self {
+    Self {token: token.into(), client}
+  }
+}
 
 /// Validate an incoming HTTP request from slack
 pub fn request_authentic(state: &'static crate::State,

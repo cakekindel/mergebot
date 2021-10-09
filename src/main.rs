@@ -93,21 +93,28 @@ pub struct State {
   /// Reader for deployable app configuration
   pub app_reader: Box<dyn deploy::app::Reader>,
   /// HTTP request client
-  pub reqwest_client: reqwest::blocking::Client,
+  pub reqwest_client: &'static reqwest::blocking::Client,
   /// slack groups API
   pub slack_groups: Box<dyn slack::groups::Groups>,
+  /// slack msg API
+  pub slack_msg: Box<dyn slack::msg::Messages>,
 }
 
 lazy_static::lazy_static! {
+  static ref CLIENT: reqwest::blocking::Client =reqwest::blocking::Client::new();
   static ref STATE: State = {
+    let slack_token =env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required");
+    let slack_api = slack::Api::new(&slack_token, &CLIENT);
+
     State {
       slack_signing_secret: env::var("SLACK_SIGNING_SECRET").expect("SLACK_SIGNING_SECRET required"),
-      slack_api_token: env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required"),
-      job_messenger: Box::from(job::SlackMessenger),
+      slack_api_token: slack_token.clone(),
       job_queue: Box::from(job::MemQueue),
       app_reader: Box::from(deploy::app::JsonFile),
-      reqwest_client: reqwest::blocking::Client::new(),
-      slack_groups: Box::from(slack::Api),
+      reqwest_client: &CLIENT,
+      slack_groups: Box::from(slack_api.clone()),
+      job_messenger: Box::from(slack_api.clone()),
+      slack_msg: Box::from(slack_api),
     }
   };
 }
@@ -274,9 +281,8 @@ pub mod filters {
              .cloned()
              .iter()
              .find(|j| match &j.state {
-               | job::State::Notified { channel: c,
-                                        message_ts: t,
-                                        .. } => &ts == t && &channel == c,
+               | job::State::Notified { msg_id,
+                                        .. } => msg_id.eq(&channel, &ts),
                | _ => false,
              })
              .and_then(|job| match reaction.as_str() {
@@ -345,9 +351,9 @@ pub mod filters {
                      }
                    }) // [5]
                    .and_then(|job| {
-                     mergebot.job_messenger.send_message_for_job(&mergebot.reqwest_client, &mergebot.slack_api_token, &job)
-                         .map_err(deploy::Error::Notification)
-                         .map(|message_ts| mergebot.job_queue.set_state(&job.id, job::State::Notified{message_ts, channel: job.app.notification_channel_id, approved_by: vec![]}))
+                     mergebot.job_messenger.send_message_for_job(&job)
+                         .map_err(deploy::Error::SlackApi)
+                         .map(|msg_id| mergebot.job_queue.set_state(&job.id, job::State::Notified{msg_id, approved_by: vec![]}))
                    }) // [6]
                    .map(|job| warp::reply::with_status(format!("```{:#?}```", job), http::StatusCode::OK))
                    .map_err(|e| warp::reply::with_status(format!("Error processing command: {:#?}", e), http::StatusCode::OK))

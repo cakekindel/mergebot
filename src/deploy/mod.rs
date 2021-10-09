@@ -72,8 +72,8 @@ pub enum Error {
   AppNotFound(String),
   /// Environment not found in application
   EnvNotFound(String, String),
-  /// Failed to notify approvers
-  Notification(crate::job::MessagingError),
+  /// Error interacting with slack
+  SlackApi(slack::Error),
 }
 
 impl TryFrom<slack::SlashCommand> for Command {
