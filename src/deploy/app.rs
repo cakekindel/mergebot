@@ -1,11 +1,11 @@
 use serde::{Deserialize as De, Serialize as Ser};
 
 /// A git branch
-#[derive(Clone, Debug, Ser, De)]
+#[derive(PartialEq, Clone, Debug, Ser, De)]
 pub struct Branch(pub String);
 
 /// A branch diff that, when merged, triggers a deploy
-#[derive(Clone, Debug, Ser, De)]
+#[derive(PartialEq, Clone, Debug, Ser, De)]
 pub struct Mergeable {
   /// Pretty name of the environment. Commands will be matched against this.
   /// Must not contain spaces.
@@ -18,8 +18,15 @@ pub struct Mergeable {
   pub users: Vec<User>,
 }
 
+impl Mergeable {
+  /// Check if a given name loosely equals the name of this environment
+  pub fn name_eq(&self, name: impl AsRef<str>) -> bool {
+    self.name.trim().to_lowercase() == name.as_ref().trim().to_lowercase()
+  }
+}
+
 /// A git repository, containing a branch for each environment
-#[derive(Clone, Debug, Ser, De)]
+#[derive(PartialEq, Clone, Debug, Ser, De)]
 pub struct Repo {
   /// Remote URL of the repo (must be SSH)
   pub url: String,
@@ -32,7 +39,7 @@ pub struct Repo {
 }
 
 /// A user who can initiate or will be asked to approve
-#[derive(Clone, Debug, Ser, De)]
+#[derive(PartialEq, Clone, Debug, Ser, De)]
 #[serde(untagged)]
 pub enum User {
   /// A single user
@@ -85,7 +92,7 @@ impl User {
 }
 
 /// A deployable application.
-#[derive(Clone, Debug, Ser, De)]
+#[derive(PartialEq, Clone, Debug, Ser, De)]
 pub struct App {
   /// Pretty name of the app (for displaying and matching commands against).
   /// Must not contain spaces.

@@ -22,17 +22,13 @@ pub struct Command {
 
 impl Command {
   /// Given a `deployable::Reader`, try to find a deployable application matching the command.
-  pub fn find_app<R: AsRef<impl app::Reader + ?Sized>>(
-    &self,
-    reader: R)
-    -> Result<App, Error> {
+  pub fn find_app<R: AsRef<impl app::Reader + ?Sized>>(&self, reader: R) -> Result<App, Error> {
     use app::*;
     use Error::*;
 
     #[allow(clippy::suspicious_operation_groupings)] // clippy is sus
     let matches_app = |app: &App| -> bool {
-      app.team_id == self.team_id
-      && app.name.to_lowercase().trim() == self.app_name.to_lowercase().trim()
+      app.team_id == self.team_id && app.name.to_lowercase().trim() == self.app_name.to_lowercase().trim()
     };
 
     let matches_team = |apps: Vec<App>| -> Result<App, Error> {
@@ -48,11 +44,7 @@ impl Command {
       && env.users.iter().any(|u| u.user_id() == Some(&self.user_id))
     };
 
-    let matches_env_and_user = |app: &App| -> bool {
-      app.repos
-         .iter()
-         .any(|r| r.environments.iter().any(env_matches))
-    };
+    let matches_env_and_user = |app: &App| -> bool { app.repos.iter().any(|r| r.environments.iter().any(env_matches)) };
 
     reader.as_ref()
           .read()
@@ -60,9 +52,7 @@ impl Command {
           .and_then(matches_team)
           .and_then(|app| match matches_env_and_user(&app) {
             | true => Ok(app),
-            | false => {
-              Err(EnvNotFound(self.app_name.clone(), self.env_name.clone()))
-            },
+            | false => Err(EnvNotFound(self.app_name.clone(), self.env_name.clone())),
           })
   }
 }
@@ -70,6 +60,8 @@ impl Command {
 /// Any error around the /deploy command
 #[derive(Debug)]
 pub enum Error {
+  /// There's a pending deploy already
+  JobAlreadyQueued(crate::job::Job),
   /// Slash command sent was not deploy
   CommandNotDeploy,
   /// Error encountered trying to read `deployables.json`
@@ -92,11 +84,9 @@ impl TryFrom<slack::SlashCommand> for Command {
              | "/deploy" => Ok(cmd),
              | _ => Err(Error::CommandNotDeploy),
            })
-           .and_then(|cmd| {
-             match cmd.text.clone().split(' ').collect::<Vec<_>>().as_slice() {
-               | [app, env] => Ok((cmd, app.to_string(), env.to_string())),
-               | _ => Err(Error::CommandMalformed),
-             }
+           .and_then(|cmd| match cmd.text.clone().split(' ').collect::<Vec<_>>().as_slice() {
+             | [app, env] => Ok((cmd, app.to_string(), env.to_string())),
+             | _ => Err(Error::CommandMalformed),
            })
            .map(|(cmd, app_name, env_name)| Command { team_id: cmd.team_id,
                                                       user_id: cmd.user_id,

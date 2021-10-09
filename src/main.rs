@@ -94,6 +94,8 @@ pub struct State {
   pub app_reader: Box<dyn deploy::app::Reader>,
   /// HTTP request client
   pub reqwest_client: reqwest::blocking::Client,
+  /// slack groups API
+  pub slack_groups: Box<dyn slack::groups::Groups>,
 }
 
 lazy_static::lazy_static! {
@@ -105,6 +107,7 @@ lazy_static::lazy_static! {
       job_queue: Box::from(job::MemQueue),
       app_reader: Box::from(deploy::app::JsonFile),
       reqwest_client: reqwest::blocking::Client::new(),
+      slack_groups: Box::from(slack::Api),
     }
   };
 }
@@ -172,8 +175,7 @@ pub mod filters {
     ($reply: ty, $reject: ty) => {impl Filter<Extract = $reply, Error = $reject> + Clone};
   }
 
-  async fn handle_unauthorized(err: Rejection)
-                               -> Result<impl Reply, Rejection> {
+  async fn handle_unauthorized(err: Rejection) -> Result<impl Reply, Rejection> {
     if err.find::<Unauthorized>().is_some() {
       Ok(warp::reply::with_status("", http::StatusCode::UNAUTHORIZED))
     } else {
@@ -185,50 +187,118 @@ pub mod filters {
   /// The composite warp filter that defines our HTTP api
   pub fn api(state: fn() -> StateFilter) -> filter!() {
     hello().or(handle_command(state))
-           .or(handle_event(state))
+           .or(event_filter(state))
            .recover(handle_unauthorized)
   }
 
   /// https://api.slack.com/authentication/verifying-requests-from-slack
-  fn slack_request_authentic(mergebot_state: StateFilter)
-                             -> filter!((bytes::Bytes,), Rejection) {
-    mergebot_state
-        .and(warp::filters::body::bytes())
-        .and(warp::filters::header::value("X-Slack-Request-Timestamp"))
-        .and(warp::filters::header::value("X-Slack-Signature"))
-        .and_then(|state, body: bytes::Bytes, ts, sig| async move {
-          if slack::request_authentic(state, body.clone(), ts, sig) {
-            Ok(body)
-          } else {
-            Err(warp::reject::custom(Unauthorized))
-          }
-        })
+  fn slack_request_authentic(mergebot_state: StateFilter) -> filter!((bytes::Bytes,), Rejection) {
+    mergebot_state.and(warp::filters::body::bytes())
+                  .and(warp::filters::header::value("X-Slack-Request-Timestamp"))
+                  .and(warp::filters::header::value("X-Slack-Signature"))
+                  .and_then(|state, body: bytes::Bytes, ts, sig| async move {
+                    if slack::request_authentic(state, body.clone(), ts, sig) {
+                      Ok(body)
+                    } else {
+                      Err(warp::reject::custom(Unauthorized))
+                    }
+                  })
   }
 
   /// GET api/v1/hello/:name -> 200 "hello, {name}!"
   fn hello() -> filter!(impl Reply) {
     warp::path!("api" / "v1" / "hello" / String).and(warp::get())
-                                                .map(|name| {
-                                                  format!("hello, {}!", name)
-                                                })
+                                                .map(|name| format!("hello, {}!", name))
   }
 
-  fn handle_event(state: fn() -> StateFilter) -> filter!((impl Reply, )) {
-    warp::path!("api" / "v1" / "event")
-         .and(warp::post())
-         .and(slack_request_authentic(state()))
-         .and_then(|body: bytes::Bytes| async move {
-           serde_json::from_slice::<slack::Event>(&body)
-             .map(|ev| match ev {
-               slack::Event::Challenge {challenge} => warp::reply::with_status(challenge, http::StatusCode::OK)
+  fn handle_approval(state: &'static State, job: &job::Job, user_id: &str) -> () {
+    let outstanding_approver =
+      job.outstanding_approvers().into_iter().find(|u| match u {
+                                               | deploy::User::User { user_id, .. } => user_id == user_id,
+                                               | deploy::User::Group { group_id, .. } => {
+                                                 state.slack_groups
+                                                      .expand(&state.reqwest_client, &state.slack_api_token, group_id)
+                                                      .map_err(|e| log::error!("{:#?}", e))
+                                                      .unwrap_or(vec![])
+                                                      .contains(&user_id.to_string())
+                                               },
+                                             });
+
+    if let Some(user) = outstanding_approver {
+      log::info!("user {:#?} thumbsed a post and we were waiting for their approval",
+                 user);
+
+      let mut job_copy = state.job_queue.lookup(&job.id).expect("job wasn't removed");
+
+      if job_copy.outstanding_approvers().len() == 1 {
+        state.job_queue.set_state(&job.id, job::State::Approved);
+      } else {
+        match job_copy.state {
+          | job::State::Notified { ref mut approved_by, .. } => {
+            log::info!("job id {} now has their approval", job_copy.id);
+            approved_by.push(user.clone())
+          },
+          | _ => {
+            unreachable!("job {:#?} should still be in state Notified", job_copy)
+          },
+        };
+
+        state.job_queue.set_state(&job.id, job_copy.state);
+      }
+    }
+  }
+
+  fn ok<T: Reply>(t: T) -> warp::reply::WithStatus<T> {
+    warp::reply::with_status(t, http::StatusCode::OK)
+  }
+
+  async fn handle_event(body: bytes::Bytes,
+                        state: &'static State)
+                        -> Result<warp::reply::WithStatus<String>, warp::reject::Rejection> {
+    use slack::{Event, ReactionAddedItem as Item};
+
+    let ev = match serde_json::from_slice::<slack::Event>(&body) {
+      | Ok(b) => b,
+      | Err(e) => {
+        log::error!("{:#?}", e); // if slack sends us a bad body I need to know about it
+        return Ok(warp::reply::with_status(String::new(), http::StatusCode::BAD_REQUEST));
+      },
+    };
+
+    match ev {
+      | Event::Challenge { challenge } => Ok(ok(challenge)),
+      | Event::ReactionAdded { user,
+                               reaction,
+                               item: Item::Message { channel, ts }, } => {
+        state.job_queue
+             .cloned()
+             .iter()
+             .find(|j| match &j.state {
+               | job::State::Notified { channel: c,
+                                        message_ts: t,
+                                        .. } => &ts == t && &channel == c,
+               | _ => false,
              })
-             .map_err(|e| {
-               log::error!("{:#?}", e); // if slack sends us a bad body I need to know about it
-               warp::reply::with_status(String::new(), http::StatusCode::BAD_REQUEST)
+             .and_then(|job| match reaction.as_str() {
+               | "thumbsup" => Some(job),
+               | _ => None,
              })
-             .map(|rep| Ok(rep) as Result<warp::reply::WithStatus<String>, warp::reject::Rejection>)
-             .unwrap_or_else(|rep| Ok(rep))
-         })
+             .map(|j| handle_approval(state, j, &user));
+
+        Ok(ok(String::new()))
+      },
+      | e => {
+        log::info!("not responding to event: {:#?}", e);
+        Ok(ok(String::new()))
+      },
+    }
+  }
+
+  fn event_filter(state: fn() -> StateFilter) -> filter!((impl Reply,)) {
+    warp::path!("api" / "v1" / "event").and(warp::post())
+                                       .and(slack_request_authentic(state()))
+                                       .and(state())
+                                       .and_then(handle_event)
   }
 
   // [0] - App ensures slack request is authentic
@@ -258,11 +328,26 @@ pub mod filters {
              .and_then(|slash| {
                deploy::Command::try_from(slash) // [1]
                    .and_then(|cmd| cmd.find_app(&mergebot.app_reader).map(|app| (cmd, app))) // [2], [3], [4]
-                   .map(|(cmd, app)| mergebot.job_queue.queue(app, cmd)) // [5]
+                   .and_then(|(cmd, app)| {
+                     let loose_eq = |a: &str, b: &str| a.trim().to_lowercase() == b.trim().to_lowercase();
+                     let existing = mergebot
+                       .job_queue
+                           .cloned()
+                           .into_iter()
+                           .find(
+                               |j| j.app == app && loose_eq(&j.command.env_name, &cmd.env_name)
+                           );
+
+                     if let Some(job) = existing {
+                       Err(deploy::Error::JobAlreadyQueued(job))
+                     } else {
+                       Ok(mergebot.job_queue.queue(app, cmd))
+                     }
+                   }) // [5]
                    .and_then(|job| {
                      mergebot.job_messenger.send_message_for_job(&mergebot.reqwest_client, &mergebot.slack_api_token, &job)
                          .map_err(deploy::Error::Notification)
-                         .map(|message_ts| mergebot.job_queue.set_state(&job.id, job::State::Notified{message_ts}))
+                         .map(|message_ts| mergebot.job_queue.set_state(&job.id, job::State::Notified{message_ts, channel: job.app.notification_channel_id, approved_by: vec![]}))
                    }) // [6]
                    .map(|job| warp::reply::with_status(format!("```{:#?}```", job), http::StatusCode::OK))
                    .map_err(|e| warp::reply::with_status(format!("Error processing command: {:#?}", e), http::StatusCode::OK))

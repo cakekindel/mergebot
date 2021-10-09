@@ -4,7 +4,7 @@ pub use queue::*;
 mod messaging;
 pub use messaging::*;
 
-use crate::deploy::{App, Command};
+use crate::deploy::{App, Command, User};
 
 /// State a job may be in
 #[derive(Clone, Debug)]
@@ -13,8 +13,14 @@ pub enum State {
   Initiated,
   /// Approvers have been notified
   Notified {
+    /// Id of channel message was sent in
+    channel: String,
+
     /// Unique identifier for sent message
     message_ts: String,
+
+    /// People who have approved this deploy
+    approved_by: Vec<User>,
   },
   /// Job has been approved but not executed (TODO: remove?)
   Approved,
@@ -31,4 +37,25 @@ pub struct Job {
   pub command: Command,
   /// Application to deploy
   pub app: App,
+}
+
+impl Job {
+  /// Get all users who have not approved this job
+  pub fn outstanding_approvers(&self) -> Vec<User> {
+    let approved_by = match &self.state {
+      | State::Notified { approved_by, .. } => approved_by.clone(),
+      | _ => vec![],
+    };
+    let hasnt_approved = |u: &User| approved_by.iter().all(|a| a != u);
+    let mut users = self.app
+                        .repos
+                        .iter()
+                        .flat_map(|r| r.environments.iter().filter(|env| env.name_eq(&self.command.env_name)))
+                        .flat_map(|env| env.users.clone())
+                        .filter(hasnt_approved)
+                        .collect::<Vec<_>>();
+    users.dedup();
+
+    users
+  }
 }

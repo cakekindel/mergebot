@@ -29,6 +29,9 @@ pub trait Queue: 'static + Sync + Send + std::fmt::Debug {
 
   /// Update the state of a job
   fn set_state(&self, id: &str, state: State) -> Option<Job>;
+
+  /// Get a clone of the current state of the queue
+  fn cloned(&self) -> VecDeque<Job>;
 }
 
 /// In-memory implementor of the Queue trait.
@@ -75,5 +78,9 @@ impl Queue for MemQueue {
     queue.push_back(job.clone());
 
     job
+  }
+
+  fn cloned(&self) -> VecDeque<Job> {
+    queue_lock().clone()
   }
 }

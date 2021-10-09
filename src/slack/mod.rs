@@ -1,5 +1,12 @@
 use serde::{Deserialize as De, Serialize as Ser};
 
+/// Groups API
+pub mod groups;
+
+/// Represents the real slack API, makes HTTP requests
+#[derive(Clone, Copy, Debug)]
+pub struct Api;
+
 /// Validate an incoming HTTP request from slack
 pub fn request_authentic(state: &'static crate::State,
                          bytes: bytes::Bytes,
@@ -15,8 +22,7 @@ pub fn request_authentic(state: &'static crate::State,
   let inbound_sig = inbound_sig.to_str().unwrap();
   let base_string = [b"v0:", ts.as_bytes(), b":", &bytes].concat();
 
-  let mut mac =
-    HmacSha256::new_from_slice(state.slack_signing_secret.as_bytes()).unwrap();
+  let mut mac = HmacSha256::new_from_slice(state.slack_signing_secret.as_bytes()).unwrap();
   mac.update(&base_string);
 
   let sig = mac.finalize().into_bytes()[..].to_vec();
@@ -53,6 +59,37 @@ pub enum Event {
     /// Text we need to respond with
     challenge: String,
   },
+  /// A reaction was added to a message
+  #[serde(rename = "reaction_added")]
+  ReactionAdded {
+    /// The user who reacted
+    user: String,
+    /// The emoji that was reacted with
+    reaction: String,
+    /// The item that was reacted to
+    item: ReactionAddedItem,
+  },
+  /// Any other kind of event
+  #[serde(other)]
+  Other,
+}
+
+/// A reaction was added to a message, file, file comment
+#[derive(Ser, De, Debug)]
+#[serde(tag = "type")]
+pub enum ReactionAddedItem {
+  /// Some info about the message that was reacted to
+  #[serde(rename = "message")]
+  Message {
+    /// Channel id
+    channel: String,
+    /// Message timestamp
+    ts: String,
+  },
+
+  /// Something other than a message
+  #[serde(other)]
+  Other,
 }
 
 /// Payload sent by slack on slash commands.

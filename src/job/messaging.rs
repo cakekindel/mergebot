@@ -63,14 +63,9 @@ impl Messenger for SlackMessenger {
     let users = job.app
                    .repos
                    .iter()
-                   .flat_map(|repo| {
-                     repo.environments.iter().flat_map(|env| env.users.iter())
-                   })
+                   .flat_map(|repo| repo.environments.iter().flat_map(|env| env.users.iter()))
                    .collect::<Vec<_>>();
-    let approvers = users.iter()
-                         .copied()
-                         .filter(|u| u.is_approver())
-                         .collect::<Vec<_>>();
+    let approvers = users.iter().copied().filter(|u| u.is_approver()).collect::<Vec<_>>();
 
     let blocks: Vec<slack_blocks::Block> = {
       use slack_blocks::blox::*;
