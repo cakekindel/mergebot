@@ -112,7 +112,7 @@ pub enum ReadError {
 
 /// A Reader is capable of producing an array of deployables,
 /// presumably from `deployables.json`
-pub trait Reader {
+pub trait Reader: 'static + Sync + Send + std::fmt::Debug {
   /// Read the deployables from some source
   fn read(&self) -> Result<Vec<App>, ReadError>;
 }

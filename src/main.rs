@@ -74,24 +74,42 @@ pub mod deploy;
 /// Job queue stuff
 pub mod job;
 
+// I chose to use dyn boxes rather than generics here for code footprint and code footprint alone.
+// If scale was a concern, I would want to change:
+//   `State {t: Box<dyn Trait>}`
+// to
+//   `State<T: Trait> {trait: T}`
 /// App environment
-#[derive(Clone, Debug)]
-pub struct State<JobMsgr: job::Messenger + Sync + Clone + std::fmt::Debug,
- JobQ: job::Queue + Sync + Clone + std::fmt::Debug,
- AppReader: deploy::app::Reader + Sync + Clone + std::fmt::Debug> {
+#[derive(Debug)]
+pub struct State {
   /// slack signing secret
   pub slack_signing_secret: String,
   /// slack api token
   pub slack_api_token: String,
   /// notifies approvers
-  pub job_messenger: JobMsgr,
+  pub job_messenger: Box<dyn job::Messenger>,
   /// Job queue
-  pub job_queue: JobQ,
+  pub job_queue: Box<dyn job::Queue>,
   /// Reader for deployable app configuration
-  pub app_reader: AppReader,
+  pub app_reader: Box<dyn deploy::app::Reader>,
   /// HTTP request client
   pub reqwest_client: reqwest::blocking::Client,
 }
+
+lazy_static::lazy_static! {
+  static ref STATE: State = {
+    State {
+      slack_signing_secret: env::var("SLACK_SIGNING_SECRET").expect("SLACK_SIGNING_SECRET required"),
+      slack_api_token: env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required"),
+      job_messenger: Box::from(job::SlackMessenger),
+      job_queue: Box::from(job::MemQueue),
+      app_reader: Box::from(deploy::app::JsonFile),
+      reqwest_client: reqwest::blocking::Client::new(),
+    }
+  };
+}
+
+type StateFilter = warp::filters::BoxedFilter<(&'static State, )>;
 
 fn init_logger() {
   if env::var_os("RUST_LOG").is_none() {
@@ -101,19 +119,24 @@ fn init_logger() {
   pretty_env_logger::init();
 }
 
-/// Spin up the actual app state
-fn get_state(
-  )
-    -> State<job::SlackMessenger, job::MemQueue, deploy::app::JsonFile>
-{
-  State {
-    slack_signing_secret: env::var("SLACK_SIGNING_SECRET").expect("SLACK_SIGNING_SECRET required"),
-    slack_api_token: env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required"),
-    job_messenger: job::SlackMessenger,
-    job_queue: job::MemQueue,
-    app_reader: deploy::app::JsonFile,
-    reqwest_client: reqwest::blocking::Client::new(),
-  }
+fn create_state_filter() -> StateFilter {
+  // A note on this filter and dependency injection:
+  //
+  // Context: It's important to me that I isolate my IO (reading from `./deployables.json`, sending HTTP requests to slack, etc.)
+  // from my application code so that I can replace it with mocks during testing.
+  //
+  // Passing in dependencies to the functions in the `filter` module is rather difficult,
+  // since filter closures need to be:
+  //   - independent of local state (can't use references to the dep)
+  //   - re-runnable (can't move the dep out of the parent scope into the filter)
+  //
+  // The solution I came up with was a filter that produces a static reference (lives as long as the program)
+  // to a STATE static variable.
+  //
+  // This means that any number of filters can all access (but not mutate)
+  // application state, and the filters are isolated from the implementors of the traits
+
+  warp::filters::any::any().map(|| &*STATE).boxed()
 }
 
 /// Entry point
@@ -123,16 +146,14 @@ pub async fn main() {
 
   dotenv::dotenv().ok();
 
-  let state = get_state();
-
-  let api = filters::api(state).with(warp::log("mergebot"));
+  let api = filters::api(create_state_filter).with(warp::log("mergebot"));
 
   warp::serve(api).run(([127, 0, 0, 1], 3030)).await;
 }
 
 /// Warp filters
 pub mod filters {
-  use std::convert::TryFrom;
+  use std::convert::{TryFrom};
 
   use warp::{reject::{Reject, Rejection},
              reply::Reply};
@@ -151,17 +172,6 @@ pub mod filters {
     ($reply: ty, $reject: ty) => {impl Filter<Extract = $reply, Error = $reject> + Clone};
   }
 
-  /// expands to gross app state type
-  macro_rules! state {
-    () => {
-      State<
-        impl job::Messenger + Sync + Send + Clone + std::fmt::Debug,
-        impl job::Queue + Sync + Send + Clone + std::fmt::Debug,
-        impl deploy::app::Reader + Sync + Send + Clone + std::fmt::Debug,
-      >
-    }
-  }
-
   async fn handle_unauthorized(err: Rejection)
                                -> Result<impl Reply, Rejection> {
     if err.find::<Unauthorized>().is_some() {
@@ -172,25 +182,31 @@ pub mod filters {
   }
 
   /// The composite warp filter that defines our HTTP api
-  pub fn api(app_state: state!()) -> filter!() {
+  pub fn api(state: fn() -> StateFilter) -> filter!() {
     let handle_command =
-      slack_request_authentic().and(slash_command(app_state));
+      slack_request_authentic(state()).and(slash_command(state()));
     hello().or(handle_command).recover(handle_unauthorized)
   }
 
+
   /// https://api.slack.com/authentication/verifying-requests-from-slack
-  fn slack_request_authentic() -> filter!((), Rejection) {
+  fn slack_request_authentic(f: StateFilter) -> filter!((), Rejection) {
     warp::filters::body::bytes()
+        .and(f)
         .and(warp::filters::header::value("X-Slack-Request-Timestamp"))
         .and(warp::filters::header::value("X-Slack-Signature"))
-        .and_then(|bytes: bytes::Bytes, ts: http::HeaderValue, inbound_sig: http::HeaderValue| async move {
-          use sha2::Digest;
+        .and_then(|bytes: bytes::Bytes, state: &'static State, ts: http::HeaderValue, inbound_sig: http::HeaderValue| async move {
+          use sha2::{Sha256};
+          use hmac::{Hmac, Mac, NewMac};
+
+          type HmacSha256 = Hmac<Sha256>;
 
           let ts = ts.to_str().unwrap();
           let inbound_sig = inbound_sig.to_str().unwrap();
           let base_string = [b"v0:", ts.as_bytes(), b":", &bytes].concat();
-          let hash = sha2::Sha256::digest(&base_string);
-          let sig = [b"v0={}", &hash[..]].concat();
+          let mut mac = HmacSha256::new_from_slice(state.slack_signing_secret.as_bytes()).unwrap();
+          mac.update(&base_string);
+          let sig = [b"v0={}", &mac.finalize().into_bytes()[..]].concat();
 
           if sig == inbound_sig.as_bytes() {
             Ok(())
@@ -219,18 +235,19 @@ pub mod filters {
   // [8] - when approval conditions met, mergebot executes merge job (`git switch <target>; git merge <base> --no-edit --ff-only --no-verify; git push --no-verify;`)
 
   /// Initiate a deployment
-  fn slash_command(mergebot: state!()) -> filter!((impl Reply,)) {
+  fn slash_command(f: StateFilter) -> filter!((impl Reply,)) {
     warp::path!("api" / "v1" / "command")
+         .and(f)
          .and(warp::post())
          .and(warp::body::form::<slack::SlashCommand>())
-         .map(move |slash: slack::SlashCommand| {
+         .map(move |mergebot: &'static State, slash: slack::SlashCommand| {
            deploy::Command::try_from(slash) // [1]
                .and_then(|cmd| cmd.find_app(&mergebot.app_reader).map(|app| (cmd, app))) // [2], [3], [4]
                .map(|(cmd, app)| mergebot.job_queue.queue(app, cmd)) // [5]
                .and_then(|job| {
                  mergebot.job_messenger.send_message_for_job(&mergebot.reqwest_client, &mergebot.slack_api_token, &job)
                      .map_err(deploy::Error::Notification)
-                     .map(|message_ts| mergebot.job_queue.set_state(job.id, job::State::Notified{message_ts}))
+                     .map(|message_ts| mergebot.job_queue.set_state(&job.id, job::State::Notified{message_ts}))
                }) // [6]
                .map(|job| format!("```{:#?}```", job))
                .map_err(|e| format!("Error processing command: {:#?}", e))

@@ -14,9 +14,9 @@ fn queue_lock() -> MutexGuard<'static, VecDeque<Job>> {
 }
 
 /// A FIFO Job queue
-pub trait Queue {
+pub trait Queue: 'static + Sync + Send + std::fmt::Debug {
   /// Get a copy of a job in the queue with id matching `id`
-  fn lookup(&self, id: impl AsRef<str>) -> Option<Job>;
+  fn lookup(&self, id: &str) -> Option<Job>;
 
   /// Take the next job
   fn dequeue(&self) -> Option<Job>;
@@ -28,15 +28,7 @@ pub trait Queue {
   fn queue(&self, app: App, command: Command) -> Job;
 
   /// Update the state of a job
-  fn set_state(&self, id: impl AsRef<str>, state: State) -> Option<Job> {
-    self.update(id, |j| j.state = state)
-  }
-
-  /// Apply some mutation to a job
-  fn update(&self,
-            id: impl AsRef<str>,
-            f: impl FnOnce(&mut Job))
-            -> Option<Job>;
+  fn set_state(&self, id: &str, state: State) -> Option<Job>;
 }
 
 /// In-memory implementor of the Queue trait.
@@ -46,9 +38,9 @@ pub trait Queue {
 pub struct MemQueue;
 
 impl Queue for MemQueue {
-  fn lookup(&self, id: impl AsRef<str>) -> Option<Job> {
+  fn lookup(&self, id: &str) -> Option<Job> {
     let queue = &queue_lock();
-    queue.iter().find(|j| j.id == id.as_ref()).cloned()
+    queue.iter().find(|j| j.id == id).cloned()
   }
 
   fn dequeue(&self) -> Option<Job> {
@@ -56,16 +48,16 @@ impl Queue for MemQueue {
     queue.pop_front()
   }
 
-  fn update(&self,
-            id: impl AsRef<str>,
-            f: impl FnOnce(&mut Job))
+  fn set_state(&self,
+            id: &str,
+            state: State,)
             -> Option<Job> {
     let queue = &mut queue_lock();
 
     queue.iter_mut()
-         .find(|j| j.id == id.as_ref())
+         .find(|j| j.id == id)
          .map(|j| {
-           f(j);
+           j.state = state;
            j
          })
          .cloned()

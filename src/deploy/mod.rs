@@ -22,7 +22,7 @@ pub struct Command {
 
 impl Command {
   /// Given a `deployable::Reader`, try to find a deployable application matching the command.
-  pub fn find_app(&self, reader: &impl app::Reader) -> Result<App, Error> {
+  pub fn find_app<R: AsRef<impl app::Reader + ?Sized>>(&self, reader: R) -> Result<App, Error> {
     use app::*;
     use Error::*;
 
@@ -51,7 +51,7 @@ impl Command {
          .any(|r| r.environments.iter().any(env_matches))
     };
 
-    reader.read()
+    reader.as_ref().read()
           .map_err(ReadingApps)
           .and_then(matches_team)
           .and_then(|app| match matches_env_and_user(&app) {

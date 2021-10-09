@@ -8,11 +8,11 @@ use crate::deploy;
 pub struct SlackMessenger;
 
 /// A messenger is able to notify the approvers of an app of a deployment
-pub trait Messenger {
+pub trait Messenger: 'static + Sync + Send + std::fmt::Debug {
   /// Notify approvers of an app for deployment
   fn send_message_for_job(&self,
                           client: &reqwest::blocking::Client,
-                          slack_token: impl AsRef<str>,
+                          slack_token: &str,
                           job: &Job)
                           -> Result<String, MessagingError>;
 }
@@ -57,7 +57,7 @@ pub enum MessagingError {
 impl Messenger for SlackMessenger {
   fn send_message_for_job(&self,
                           client: &reqwest::blocking::Client,
-                          slack_token: impl AsRef<str>,
+                          slack_token: &str,
                           job: &Job)
                           -> Result<String, MessagingError> {
     let users = job.app
@@ -91,11 +91,11 @@ impl Messenger for SlackMessenger {
 
     client.post("https://slack.com/api/chat.postMessage")
           .json(&serde_json::json!({
-                  "token": slack_token.as_ref(),
+                  "token": slack_token,
                   "channel": job.app.notification_channel_id,
                   "blocks": serde_json::to_value(blocks).unwrap(),
                 }))
-          .header("authorization", format!("Bearer {}", slack_token.as_ref()))
+          .header("authorization", format!("Bearer {}", slack_token))
           .send()
           .and_then(|rep| rep.error_for_status())
           .and_then(|rep| rep.json::<Rep>())
