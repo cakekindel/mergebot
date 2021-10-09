@@ -21,20 +21,20 @@ pub fn request_authentic(state: &'static crate::State,
 
   let sig = [b"v0={}", &mac.finalize().into_bytes()[..]].concat();
 
-  let valid = sig == inbound_sig.as_bytes();
+  let valid = Ok(&sig) == hex::decode(inbound_sig).as_ref();
 
   if !valid {
     log::info!(r#"Slack request invalid.
                   timestamp: {}
-                  body: {}
-                  incoming signature: {}
+                  body: {:?}
+                  incoming signature: {:?}
                   signing key: {}
-                  generated signature: {}"#,
+                  generated signature: {:?}"#,
                ts,
-               String::from_utf8_lossy(&bytes),
-               String::from_utf8_lossy(&sig),
+               bytes,
+               hex::decode(inbound_sig),
                state.slack_signing_secret,
-               String::from_utf8_lossy(&sig));
+               sig);
   }
 
   valid
