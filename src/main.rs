@@ -177,6 +177,7 @@ pub mod filters {
     if err.find::<Unauthorized>().is_some() {
       Ok(warp::reply::with_status("", http::StatusCode::UNAUTHORIZED))
     } else {
+      log::error!("unhandled rejection: {:#?}", err);
       Err(err)
     }
   }
