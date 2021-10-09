@@ -184,7 +184,8 @@ pub mod filters {
 
   /// The composite warp filter that defines our HTTP api
   pub fn api(state: fn() -> StateFilter) -> filter!() {
-    hello().or(slash_command(state))
+    hello().or(handle_command(state))
+           .or(handle_event(state))
            .recover(handle_unauthorized)
   }
 
@@ -212,6 +213,25 @@ pub mod filters {
                                                 })
   }
 
+  fn handle_event(state: fn() -> StateFilter) -> filter!((impl Reply, )) {
+    warp::path!("api" / "v1" / "event")
+         .and(warp::post())
+         .and(slack_request_authentic(state()))
+         .and_then(|body: bytes::Bytes| async move {
+           serde_json::from_slice::<slack::Event>(&body)
+             .map(|ev| match ev {
+               slack::Event::Challenge(chal) => warp::reply::with_status(chal, http::StatusCode::OK)
+             })
+             .map_err(|e| {
+               log::error!("{:#?}", e); // if slack sends us a bad body I need to know about it
+               warp::reply::with_status(String::new(), http::StatusCode::BAD_REQUEST)
+             })
+             .map(|rep| Ok(rep) as Result<warp::reply::WithStatus<String>, warp::reject::Rejection>)
+             .unwrap_or_else(|rep| Ok(rep))
+         })
+  }
+
+  // [0] - App ensures slack request is authentic
   // [1] - User A issues `/deploy foo staging`
   // [2] - mergebot checks Apps (configured via `./deployables.json`, which is ignored from source control) for name == "foo"
   // [3] - mergebot checks `foo.repos` for `environments` matching the name "staging"
@@ -222,15 +242,17 @@ pub mod filters {
   // [8] - when approval conditions met, mergebot executes merge job (`git switch <target>; git merge <base> --no-edit --ff-only --no-verify; git push --no-verify;`)
 
   /// Initiate a deployment
-  fn slash_command(state: fn() -> StateFilter) -> filter!((impl Reply,)) {
+  fn handle_command(state: fn() -> StateFilter) -> filter!((impl Reply,)) {
     warp::path!("api" / "v1" / "command")
          .and(warp::post())
-         .and(slack_request_authentic(state()))
+         .and(slack_request_authentic(state())) // [0]
          .and(state())
          .and_then(|body: bytes::Bytes, mergebot: &'static State| async move {
+           // need to parse body manually because warp doesn't allow
+           // using body filters twice
            serde_urlencoded::from_bytes::<slack::SlashCommand>(&body)
              .map_err(|e| {
-               log::error!("{:#?}", e);
+               log::error!("{:#?}", e); // if slack sends us a bad body I need to know about it
                warp::reply::with_status(String::new(), http::StatusCode::BAD_REQUEST)
              })
              .and_then(|slash| {
