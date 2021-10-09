@@ -4,7 +4,8 @@ pub use queue::*;
 mod messaging;
 pub use messaging::*;
 
-use crate::{slack, deploy::{App, Command, User}};
+use crate::{deploy::{App, Command, User},
+            slack};
 
 /// State a job may be in
 #[derive(Clone, Debug)]

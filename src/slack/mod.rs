@@ -32,7 +32,8 @@ pub struct Api {
 impl Api {
   /// Create a new instance
   pub fn new(token: &str, client: &'static reqwest::blocking::Client) -> Self {
-    Self {token: token.into(), client}
+    Self { token: token.into(),
+           client }
   }
 }
 

@@ -8,9 +8,7 @@ pub struct SlackMessenger;
 /// A messenger is able to notify the approvers of an app of a deployment
 pub trait Messenger: 'static + Sync + Send + std::fmt::Debug {
   /// Notify approvers of an app for deployment
-  fn send_message_for_job(&self,
-                          job: &Job)
-                          -> Result<slack::msg::Id, slack::Error>;
+  fn send_message_for_job(&self, job: &Job) -> Result<slack::msg::Id, slack::Error>;
 }
 
 fn fmt_approvers(approvers: &[&deploy::app::User]) -> String {
@@ -33,9 +31,7 @@ fn fmt_approvers(approvers: &[&deploy::app::User]) -> String {
 }
 
 impl<T: slack::msg::Messages> Messenger for T {
-  fn send_message_for_job(&self,
-                          job: &Job)
-                          -> Result<slack::msg::Id, slack::Error> {
+  fn send_message_for_job(&self, job: &Job) -> Result<slack::msg::Id, slack::Error> {
     let users = job.app
                    .repos
                    .iter()

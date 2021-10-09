@@ -37,18 +37,16 @@ pub struct Rep {
 
 impl Rep {
   fn try_from_raw(raw: RepRaw) -> Result<Rep> {
-    let RepRaw{ts, channel, ok, error} = raw;
+    let RepRaw { ts, channel, ok, error } = raw;
 
     match ok {
-      | true => ts
-                   .ok_or(Error::Other("expected ts to be present".into()))
-                   .and_then(|ts| {
-                     channel
-                        .ok_or(Error::Other("expected channel to be present".into()))
-                        .map(|channel| (channel, ts))
-                   })
-                   .map(|(channel, ts)| Id { channel, ts })
-                   .map(|id| Rep { id }),
+      | true => ts.ok_or(Error::Other("expected ts to be present".into()))
+                  .and_then(|ts| {
+                    channel.ok_or(Error::Other("expected channel to be present".into()))
+                           .map(|channel| (channel, ts))
+                  })
+                  .map(|(channel, ts)| Id { channel, ts })
+                  .map(|id| Rep { id }),
       | false => Err(Error::Slack(error.unwrap_or("no error".into()))),
     }
   }

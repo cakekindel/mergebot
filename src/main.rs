@@ -281,8 +281,7 @@ pub mod filters {
              .cloned()
              .iter()
              .find(|j| match &j.state {
-               | job::State::Notified { msg_id,
-                                        .. } => msg_id.eq(&channel, &ts),
+               | job::State::Notified { msg_id, .. } => msg_id.eq(&channel, &ts),
                | _ => false,
              })
              .and_then(|job| match reaction.as_str() {
