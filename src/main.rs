@@ -220,7 +220,7 @@ pub mod filters {
          .and_then(|body: bytes::Bytes| async move {
            serde_json::from_slice::<slack::Event>(&body)
              .map(|ev| match ev {
-               slack::Event::Challenge(chal) => warp::reply::with_status(chal, http::StatusCode::OK)
+               slack::Event::Challenge {challenge} => warp::reply::with_status(challenge, http::StatusCode::OK)
              })
              .map_err(|e| {
                log::error!("{:#?}", e); // if slack sends us a bad body I need to know about it

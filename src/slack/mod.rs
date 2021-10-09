@@ -49,7 +49,10 @@ pub fn request_authentic(state: &'static crate::State,
 pub enum Event {
   /// Slack sends us this to make sure we're ready to handle events.
   #[serde(rename = "url_verification")]
-  Challenge(String),
+  Challenge {
+    /// Text we need to respond with
+    challenge: String,
+  },
 }
 
 /// Payload sent by slack on slash commands.
