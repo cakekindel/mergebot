@@ -4,7 +4,8 @@ pub use queue::*;
 mod messaging;
 pub use messaging::*;
 
-use crate::deploy::{App, Command, User};
+use crate::{deploy::{App, Command, User},
+            slack};
 
 /// State a job may be in
 #[derive(Clone, Debug)]
@@ -13,11 +14,8 @@ pub enum State {
   Initiated,
   /// Approvers have been notified
   Notified {
-    /// Id of channel message was sent in
-    channel: String,
-
     /// Unique identifier for sent message
-    message_ts: String,
+    msg_id: slack::msg::Id,
 
     /// People who have approved this deploy
     approved_by: Vec<User>,

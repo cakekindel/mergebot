@@ -93,21 +93,28 @@ pub struct State {
   /// Reader for deployable app configuration
   pub app_reader: Box<dyn deploy::app::Reader>,
   /// HTTP request client
-  pub reqwest_client: reqwest::blocking::Client,
+  pub reqwest_client: &'static reqwest::blocking::Client,
   /// slack groups API
   pub slack_groups: Box<dyn slack::groups::Groups>,
+  /// slack msg API
+  pub slack_msg: Box<dyn slack::msg::Messages>,
 }
 
 lazy_static::lazy_static! {
+  static ref CLIENT: reqwest::blocking::Client =reqwest::blocking::Client::new();
   static ref STATE: State = {
+    let slack_token =env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required");
+    let slack_api = slack::Api::new(&slack_token, &CLIENT);
+
     State {
       slack_signing_secret: env::var("SLACK_SIGNING_SECRET").expect("SLACK_SIGNING_SECRET required"),
-      slack_api_token: env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required"),
-      job_messenger: Box::from(job::SlackMessenger),
+      slack_api_token: slack_token,
       job_queue: Box::from(job::MemQueue),
       app_reader: Box::from(deploy::app::JsonFile),
-      reqwest_client: reqwest::blocking::Client::new(),
-      slack_groups: Box::from(slack::Api),
+      reqwest_client: &CLIENT,
+      slack_groups: Box::from(slack_api.clone()),
+      job_messenger: Box::from(slack_api.clone()),
+      slack_msg: Box::from(slack_api),
     }
   };
 }
@@ -211,15 +218,15 @@ pub mod filters {
                                                 .map(|name| format!("hello, {}!", name))
   }
 
-  fn handle_approval(state: &'static State, job: &job::Job, user_id: &str) -> () {
+  fn handle_approval(state: &'static State, job: &job::Job, user_id: &str) {
     let outstanding_approver =
       job.outstanding_approvers().into_iter().find(|u| match u {
-                                               | deploy::User::User { user_id, .. } => user_id == user_id,
+                                               | deploy::User::User { user_id: u_id, .. } => u_id == user_id,
                                                | deploy::User::Group { group_id, .. } => {
                                                  state.slack_groups
-                                                      .expand(&state.reqwest_client, &state.slack_api_token, group_id)
+                                                      .expand(group_id)
                                                       .map_err(|e| log::error!("{:#?}", e))
-                                                      .unwrap_or(vec![])
+                                                      .unwrap_or_default()
                                                       .contains(&user_id.to_string())
                                                },
                                              });
@@ -236,7 +243,7 @@ pub mod filters {
         match job_copy.state {
           | job::State::Notified { ref mut approved_by, .. } => {
             log::info!("job id {} now has their approval", job_copy.id);
-            approved_by.push(user.clone())
+            approved_by.push(user)
           },
           | _ => {
             unreachable!("job {:#?} should still be in state Notified", job_copy)
@@ -270,20 +277,21 @@ pub mod filters {
       | Event::ReactionAdded { user,
                                reaction,
                                item: Item::Message { channel, ts }, } => {
-        state.job_queue
-             .cloned()
-             .iter()
-             .find(|j| match &j.state {
-               | job::State::Notified { channel: c,
-                                        message_ts: t,
-                                        .. } => &ts == t && &channel == c,
-               | _ => false,
-             })
-             .and_then(|job| match reaction.as_str() {
-               | "thumbsup" => Some(job),
-               | _ => None,
-             })
-             .map(|j| handle_approval(state, j, &user));
+        let matched_job = state.job_queue
+                               .cloned()
+                               .into_iter()
+                               .find(|j| match &j.state {
+                                 | job::State::Notified { msg_id, .. } => msg_id.eq(&channel, &ts),
+                                 | _ => false,
+                               })
+                               .and_then(|job| match reaction.as_str() {
+                                 | "thumbsup" => Some(job),
+                                 | _ => None,
+                               });
+
+        if let Some(j) = matched_job {
+          handle_approval(state, &j, &user)
+        }
 
         Ok(ok(String::new()))
       },
@@ -345,15 +353,15 @@ pub mod filters {
                      }
                    }) // [5]
                    .and_then(|job| {
-                     mergebot.job_messenger.send_message_for_job(&mergebot.reqwest_client, &mergebot.slack_api_token, &job)
-                         .map_err(deploy::Error::Notification)
-                         .map(|message_ts| mergebot.job_queue.set_state(&job.id, job::State::Notified{message_ts, channel: job.app.notification_channel_id, approved_by: vec![]}))
+                     mergebot.job_messenger.send_message_for_job(&job)
+                         .map_err(deploy::Error::SlackApi)
+                         .map(|msg_id| mergebot.job_queue.set_state(&job.id, job::State::Notified{msg_id, approved_by: vec![]}))
                    }) // [6]
                    .map(|job| warp::reply::with_status(format!("```{:#?}```", job), http::StatusCode::OK))
                    .map_err(|e| warp::reply::with_status(format!("Error processing command: {:#?}", e), http::StatusCode::OK))
              })
              .map(|rep| Ok(rep) as Result<warp::reply::WithStatus<String>, warp::reject::Rejection>)
-             .unwrap_or_else(|e| Ok(e))
+             .unwrap_or_else(Ok)
          })
   }
 }
