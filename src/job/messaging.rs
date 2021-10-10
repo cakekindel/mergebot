@@ -1,14 +1,13 @@
 use super::*;
-use crate::{deploy, slack};
-
-/// Implements Messenger for slack
-#[derive(Clone, Copy, Debug)]
-pub struct SlackMessenger;
+use crate::{job, deploy, slack};
 
 /// A messenger is able to notify the approvers of an app of a deployment
 pub trait Messenger: 'static + Sync + Send + std::fmt::Debug {
   /// Notify approvers of an app for deployment
-  fn send_message_for_job(&self, job: &Job) -> Result<slack::msg::Id, slack::Error>;
+  fn send_job_created(&self, job: &Job) -> slack::Result<slack::msg::Id>;
+
+  /// Notify that the job has been executed
+  fn send_job_approved(&self, job: &Job) -> slack::Result<slack::msg::Id>;
 }
 
 fn fmt_approvers(approvers: &[&deploy::app::User]) -> String {
@@ -31,7 +30,7 @@ fn fmt_approvers(approvers: &[&deploy::app::User]) -> String {
 }
 
 impl<T: slack::msg::Messages> Messenger for T {
-  fn send_message_for_job(&self, job: &Job) -> Result<slack::msg::Id, slack::Error> {
+  fn send_job_created(&self, job: &Job) -> Result<slack::msg::Id, slack::Error> {
     let users = job.app
                    .repos
                    .iter()
@@ -58,5 +57,21 @@ impl<T: slack::msg::Messages> Messenger for T {
     };
 
     self.send(&job.app.notification_channel_id, &blocks).map(|rep| rep.id)
+  }
+
+  /// Notify that the job has been executed
+  fn send_job_approved(&self, job: &Job) -> slack::Result<slack::msg::Id> {
+    let id = match job.state {
+      job::State::Approved {ref msg_id, ..} => Ok(msg_id),
+      _ => Err(slack::Error::Other(String::from("job was not approved"))) // TODO: wrap error
+    }?;
+
+    let blocks: Vec<slack_blocks::Block> = {
+      use slack_blocks::blox::*;
+      vec![blox!{<section_block><text kind=mrkdwn>{"Job has been approved!"}</text></section_block>}.into()]
+    };
+
+    self.send_thread(id, &blocks)
+        .map(|rep| rep.id)
   }
 }

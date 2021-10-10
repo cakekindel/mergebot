@@ -237,20 +237,24 @@ pub mod filters {
 
       let mut job_copy = state.job_queue.lookup(&job.id).expect("job wasn't removed");
 
-      if job_copy.outstanding_approvers().len() == 1 {
-        state.job_queue.set_state(&job.id, job::State::Approved);
-      } else {
-        match job_copy.state {
-          | job::State::Notified { ref mut approved_by, .. } => {
-            log::info!("job id {} now has their approval", job_copy.id);
-            approved_by.push(user)
-          },
-          | _ => {
-            unreachable!("job {:#?} should still be in state Notified", job_copy)
-          },
+      if let job::State::Notified {ref mut approved_by, ..} = job_copy.state {
+        log::info!("job id {} has been approved", job_copy.id);
+        approved_by.push(user);
+      }
+
+      if job_copy.outstanding_approvers().len() == 0 {
+        let (approved_by, msg_id) = match job_copy.state {
+          job::State::Notified {approved_by: a, msg_id: m} => (a, m),
+          _ => unreachable!()
         };
 
+        state.job_queue.set_state(&job.id, job::State::Approved {msg_id, approved_by});
+      } else {
         state.job_queue.set_state(&job.id, job_copy.state);
+
+        if let Err(e) = state.job_messenger.send_job_approved(&job) {
+          log::error!("{:#?}", e);
+        }
       }
     }
   }
@@ -353,7 +357,7 @@ pub mod filters {
                      }
                    }) // [5]
                    .and_then(|job| {
-                     mergebot.job_messenger.send_message_for_job(&job)
+                     mergebot.job_messenger.send_job_created(&job)
                          .map_err(deploy::Error::SlackApi)
                          .map(|msg_id| mergebot.job_queue.set_state(&job.id, job::State::Notified{msg_id, approved_by: vec![]}))
                    }) // [6]
