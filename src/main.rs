@@ -257,7 +257,7 @@ pub mod filters {
           | _ => unreachable!(),
         };
 
-        state.job_queue
+        let job = state.job_queue
              .set_state(&job.id, job::State::Approved { msg_id, approved_by });
 
         if let Err(e) = state.job_messenger.send_job_approved(&job) {
