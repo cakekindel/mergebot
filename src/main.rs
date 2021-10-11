@@ -222,17 +222,17 @@ pub mod filters {
     let need_approvers = job.outstanding_approvers();
     let outstanding_approver =
       need_approvers.iter().find(|u| match u {
-                                               | deploy::User::User { user_id: u_id, .. } => u_id == user_id,
-                                               | deploy::User::Group { group_id, .. } => {
-                                                 state.slack_groups
-                                                      .expand(group_id)
-                                                      .map_err(|e| log::error!("{:#?}", e))
-                                                      .unwrap_or_default()
-                                                      .contains(&user_id.to_string())
-                                               },
-                                             });
+                             | deploy::User::User { user_id: u_id, .. } => u_id == user_id,
+                             | deploy::User::Group { group_id, .. } => state.slack_groups
+                                                                            .expand(group_id)
+                                                                            .map_err(|e| log::error!("{:#?}", e))
+                                                                            .unwrap_or_default()
+                                                                            .contains(&user_id.to_string()),
+                           });
     if outstanding_approver == None {
-      log::debug!("user {:#?} thumbsed but isn't one of the outstanding approves: {:#?}", user_id, &need_approvers);
+      log::debug!("user {:#?} thumbsed but isn't one of the outstanding approves: {:#?}",
+                  user_id,
+                  &need_approvers);
     }
 
     if let Some(user) = outstanding_approver {
@@ -308,7 +308,10 @@ pub mod filters {
                .and_then(|job| match reaction.as_str() {
                  | "thumbsup" => Some(job),
                  | _ => {
-                   log::info!("user {} reacted {} to message for job {}, so I am not responding.", user, reaction, job.id);
+                   log::info!("user {} reacted {} to message for job {}, so I am not responding.",
+                              user,
+                              reaction,
+                              job.id);
                    None
                  },
                });
