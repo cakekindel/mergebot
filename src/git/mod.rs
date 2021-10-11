@@ -24,21 +24,43 @@ pub struct LocalClient {
   workdir: String,
 }
 
-/// A rust trait encapsulating some git functionality
-pub trait Client {
-  /// Switch repo context
-  fn repo(&self, url: &str) -> self::Result<Context>;
-}
+impl LocalClient {
+  fn cd(&mut self, new_path: impl ToString) -> () {
+    self.workdir = new_path.to_string();
+  }
 
-impl Client for LocalClient {
-  fn repo(&self, url: &str) -> self::Result<Context> {
-    let dir = self.cloned(url)
-                  .unwrap_or_else(|| self.git("clone", &[url]));
-    self.cd(dir);
-    Ok(Context {lock: GIT_CONTEXT.lock()})
+  fn repo_dir(&self, url: impl AsRef<str>) -> Option<String> {
+    // ls self.homedir
+    // for each repo, `git remote origin`
+    // urls eq?
+    todo!()
+  }
+
+  fn git(&self, args: &[&str]) -> Result<()> {
+    todo!()
   }
 }
 
+/// A rust trait encapsulating some git functionality
+pub trait Client {
+  /// Switch repo context.
+  /// This will block until any existing repo context is dropped.
+  fn repo(&mut self, url: &str) -> self::Result<Context>;
+}
+
+impl Client for LocalClient {
+  fn repo(&mut self, url: &str) -> self::Result<Context> {
+    let lock = || GIT_CONTEXT.lock().map_err(|p| p.into_inner()).unwrap_or_else(|e| e);
+
+    self.repo_dir(url)
+        .map(Ok)
+        .unwrap_or_else(|| self.clone(url))
+        .map(|dir| self.cd(dir))
+        .map(|_| Context {lock: lock()})
+  }
+}
+
+/// A git repo context
 pub struct Context {lock: MutexGuard<'static, ()>}
 
 impl Context {
