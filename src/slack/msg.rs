@@ -61,31 +61,40 @@ pub trait Messages: 'static + Sync + Send + std::fmt::Debug {
   fn send_thread(&self, thread_parent: &Id, blocks: &[Block]) -> Result<Rep>;
 }
 
-fn send_body(channel: Option<&str>, blocks: &[Block], thread_parent: Option<&Id>) -> serde_json::value::Map<String, serde_json::Value> {
+fn send_body(channel: Option<&str>,
+             blocks: &[Block],
+             thread_parent: Option<&Id>)
+             -> serde_json::value::Map<String, serde_json::Value> {
   let mut map = serde_json::Map::new();
-  let channel = thread_parent.map(|id| id.channel.as_str()).or(channel).expect("channel or thread_parent to be set");
-  let blocks =serde_json::to_value(blocks).expect("blocks should serialize");
+  let channel = thread_parent.map(|id| id.channel.as_str())
+                             .or(channel)
+                             .expect("channel or thread_parent to be set");
+  let blocks = serde_json::to_value(blocks).expect("blocks should serialize");
 
   map.insert("channel".into(), channel.into());
   map.insert("blocks".into(), blocks);
 
-  if let Some(Id{ts, ..}) = thread_parent {
+  if let Some(Id { ts, .. }) = thread_parent {
     map.insert("thread_ts".into(), ts.as_str().into());
   }
 
   map
 }
 
-fn send_base(token: &str, client: &reqwest::blocking::Client, channel_id: Option<&str>, thread_parent: Option<&Id>, blocks: &[Block]) -> Result<Rep> {
-  client
-      .post("https://slack.com/api/chat.postMessage")
-      .json(&send_body(channel_id, blocks, thread_parent))
-      .header("authorization", format!("Bearer {}", token))
-      .send()
-      .and_then(|rep| rep.error_for_status())
-      .and_then(|rep| rep.json::<RepRaw>())
-      .map_err(Error::Http)
-      .and_then(Rep::try_from_raw)
+fn send_base(token: &str,
+             client: &reqwest::blocking::Client,
+             channel_id: Option<&str>,
+             thread_parent: Option<&Id>,
+             blocks: &[Block])
+             -> Result<Rep> {
+  client.post("https://slack.com/api/chat.postMessage")
+        .json(&send_body(channel_id, blocks, thread_parent))
+        .header("authorization", format!("Bearer {}", token))
+        .send()
+        .and_then(|rep| rep.error_for_status())
+        .and_then(|rep| rep.json::<RepRaw>())
+        .map_err(Error::Http)
+        .and_then(Rep::try_from_raw)
 }
 
 impl Messages for Api {

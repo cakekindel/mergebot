@@ -1,5 +1,5 @@
 use super::*;
-use crate::{job, deploy, slack};
+use crate::{deploy, job, slack};
 
 /// A messenger is able to notify the approvers of an app of a deployment
 pub trait Messenger: 'static + Sync + Send + std::fmt::Debug {
@@ -62,16 +62,15 @@ impl<T: slack::msg::Messages> Messenger for T {
   /// Notify that the job has been executed
   fn send_job_approved(&self, job: &Job) -> slack::Result<slack::msg::Id> {
     let id = match job.state {
-      job::State::Approved {ref msg_id, ..} => Ok(msg_id),
-      _ => Err(slack::Error::Other(String::from("job was not approved"))) // TODO: wrap error
+      | job::State::Approved { ref msg_id, .. } => Ok(msg_id),
+      | _ => Err(slack::Error::Other(String::from("job was not approved"))), // TODO: wrap error
     }?;
 
     let blocks: Vec<slack_blocks::Block> = {
       use slack_blocks::blox::*;
-      vec![blox!{<section_block><text kind=mrkdwn>{"Job has been approved!"}</text></section_block>}.into()]
+      vec![blox! {<section_block><text kind=mrkdwn>{"Job has been approved!"}</text></section_block>}.into()]
     };
 
-    self.send_thread(id, &blocks)
-        .map(|rep| rep.id)
+    self.send_thread(id, &blocks).map(|rep| rep.id)
   }
 }

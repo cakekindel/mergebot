@@ -237,18 +237,20 @@ pub mod filters {
 
       let mut job_copy = state.job_queue.lookup(&job.id).expect("job wasn't removed");
 
-      if let job::State::Notified {ref mut approved_by, ..} = job_copy.state {
+      if let job::State::Notified { ref mut approved_by, .. } = job_copy.state {
         log::info!("job id {} has been approved", job_copy.id);
         approved_by.push(user);
       }
 
       if job_copy.outstanding_approvers().len() == 0 {
         let (approved_by, msg_id) = match job_copy.state {
-          job::State::Notified {approved_by: a, msg_id: m} => (a, m),
-          _ => unreachable!()
+          | job::State::Notified { approved_by: a,
+                                   msg_id: m, } => (a, m),
+          | _ => unreachable!(),
         };
 
-        state.job_queue.set_state(&job.id, job::State::Approved {msg_id, approved_by});
+        state.job_queue
+             .set_state(&job.id, job::State::Approved { msg_id, approved_by });
       } else {
         state.job_queue.set_state(&job.id, job_copy.state);
 
