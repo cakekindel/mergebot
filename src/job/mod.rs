@@ -21,7 +21,13 @@ pub enum State {
     approved_by: Vec<User>,
   },
   /// Job has been approved but not executed (TODO: remove?)
-  Approved,
+  Approved {
+    /// Unique identifier for sent message
+    msg_id: slack::msg::Id,
+
+    /// People who have approved this deploy
+    approved_by: Vec<User>,
+  },
 }
 
 /// A deploy job
