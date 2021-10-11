@@ -259,14 +259,14 @@ pub mod filters {
 
         state.job_queue
              .set_state(&job.id, job::State::Approved { msg_id, approved_by });
-      } else {
-        log::info!("still need approvers: {:?}", need_approvers);
-
-        state.job_queue.set_state(&job.id, job_copy.state);
 
         if let Err(e) = state.job_messenger.send_job_approved(&job) {
           log::error!("{:#?}", e);
         }
+      } else {
+        log::info!("still need approvers: {:?}", need_approvers);
+
+        state.job_queue.set_state(&job.id, job_copy.state);
       }
     }
   }
