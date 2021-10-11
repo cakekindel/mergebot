@@ -242,7 +242,7 @@ pub mod filters {
         approved_by.push(user);
       }
 
-      if job_copy.outstanding_approvers().len() == 0 {
+      if job_copy.outstanding_approvers().is_empty() {
         let (approved_by, msg_id) = match job_copy.state {
           | job::State::Notified { approved_by: a,
                                    msg_id: m, } => (a, m),
@@ -268,11 +268,11 @@ pub mod filters {
   async fn handle_event(body: bytes::Bytes,
                         state: &'static State)
                         -> Result<warp::reply::WithStatus<String>, warp::reject::Rejection> {
-    use slack::{Event, ReactionAddedItem as Item};
+    use slack::event::{Event, EventPayload::ReactionAdded, ReactionAddedItem as Item};
 
     log::info!("{}", String::from_utf8_lossy(&body));
 
-    let ev = match serde_json::from_slice::<slack::Event>(&body) {
+    let ev = match serde_json::from_slice::<Event>(&body) {
       | Ok(b) => b,
       | Err(e) => {
         log::error!("{:#?}", e); // if slack sends us a bad body I need to know about it
@@ -282,20 +282,23 @@ pub mod filters {
 
     match ev {
       | Event::Challenge { challenge } => Ok(ok(challenge)),
-      | Event::ReactionAdded { user,
-                               reaction,
-                               item: Item::Message { channel, ts }, } => {
-        let matched_job = state.job_queue
-                               .cloned()
-                               .into_iter()
-                               .find(|j| match &j.state {
-                                 | job::State::Notified { msg_id, .. } => msg_id.eq(&channel, &ts),
-                                 | _ => false,
-                               })
-                               .and_then(|job| match reaction.as_str() {
-                                 | "thumbsup" => Some(job),
-                                 | _ => None,
-                               });
+      | Event::Event { team_id,
+                       event:
+                         ReactionAdded { user,
+                                         reaction,
+                                         item: Item::Message { channel, ts }, }, } => {
+        let matched_job =
+          state.job_queue
+               .cloned()
+               .into_iter()
+               .find(|j| match &j.state {
+                 | job::State::Notified { msg_id, .. } => j.app.team_id == team_id && msg_id.eq(&channel, &ts),
+                 | _ => false,
+               })
+               .and_then(|job| match reaction.as_str() {
+                 | "thumbsup" => Some(job),
+                 | _ => None,
+               });
 
         if let Some(j) = matched_job {
           handle_approval(state, &j, &user)

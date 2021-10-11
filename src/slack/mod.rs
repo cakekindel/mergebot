@@ -1,5 +1,8 @@
 use serde::{Deserialize as De, Serialize as Ser};
 
+/// Event models
+pub mod event;
+
 /// Groups API
 pub mod groups;
 
@@ -78,50 +81,6 @@ pub fn request_authentic(state: &'static crate::State,
 
   valid
 }
-
-/// An incoming event
-#[derive(Ser, De, Debug)]
-#[serde(tag = "type")]
-pub enum Event {
-  /// Slack sends us this to make sure we're ready to handle events.
-  #[serde(rename = "url_verification")]
-  Challenge {
-    /// Text we need to respond with
-    challenge: String,
-  },
-  /// A reaction was added to a message
-  #[serde(rename = "reaction_added")]
-  ReactionAdded {
-    /// The user who reacted
-    user: String,
-    /// The emoji that was reacted with
-    reaction: String,
-    /// The item that was reacted to
-    item: ReactionAddedItem,
-  },
-  /// Any other kind of event
-  #[serde(other)]
-  Other,
-}
-
-/// A reaction was added to a message, file, file comment
-#[derive(Ser, De, Debug)]
-#[serde(tag = "type")]
-pub enum ReactionAddedItem {
-  /// Some info about the message that was reacted to
-  #[serde(rename = "message")]
-  Message {
-    /// Channel id
-    channel: String,
-    /// Message timestamp
-    ts: String,
-  },
-
-  /// Something other than a message
-  #[serde(other)]
-  Other,
-}
-
 /// Payload sent by slack on slash commands.
 ///
 /// [https://api.slack.com/interactivity/slash-commands#responding_to_commands]
@@ -144,6 +103,7 @@ pub enum ReactionAddedItem {
 ///   "user_name": "cakekindel"
 /// }
 /// ```
+
 #[derive(Ser, De, Debug)]
 pub struct SlashCommand {
   /// The command that was typed in to trigger this request. This value can be useful if you want to use a single Request URL to service multiple Slash Commands, as it lets you tell them apart.
