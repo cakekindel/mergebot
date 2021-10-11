@@ -219,8 +219,9 @@ pub mod filters {
   }
 
   fn handle_approval(state: &'static State, job: &job::Job, user_id: &str) {
+    let need_approvers = job.outstanding_approvers();
     let outstanding_approver =
-      job.outstanding_approvers().into_iter().find(|u| match u {
+      need_approvers.iter().find(|u| match u {
                                                | deploy::User::User { user_id: u_id, .. } => u_id == user_id,
                                                | deploy::User::Group { group_id, .. } => {
                                                  state.slack_groups
@@ -230,6 +231,9 @@ pub mod filters {
                                                       .contains(&user_id.to_string())
                                                },
                                              });
+    if outstanding_approver == None {
+      log::debug!("user {:#?} thumbsed but isn't one of the outstanding approves: {:#?}", user_id, &need_approvers);
+    }
 
     if let Some(user) = outstanding_approver {
       log::info!("user {:#?} thumbsed a post and we were waiting for their approval",
@@ -239,10 +243,14 @@ pub mod filters {
 
       if let job::State::Notified { ref mut approved_by, .. } = job_copy.state {
         log::info!("job id {} has been approved", job_copy.id);
-        approved_by.push(user);
+        approved_by.push(user.clone());
       }
 
-      if job_copy.outstanding_approvers().is_empty() {
+      let need_approvers = job_copy.outstanding_approvers();
+
+      if need_approvers.is_empty() {
+        log::info!("no more approvers now! changing job {:?} to Approved", job.id);
+
         let (approved_by, msg_id) = match job_copy.state {
           | job::State::Notified { approved_by: a,
                                    msg_id: m, } => (a, m),
@@ -252,6 +260,8 @@ pub mod filters {
         state.job_queue
              .set_state(&job.id, job::State::Approved { msg_id, approved_by });
       } else {
+        log::info!("still need approvers: {:?}", need_approvers);
+
         state.job_queue.set_state(&job.id, job_copy.state);
 
         if let Err(e) = state.job_messenger.send_job_approved(&job) {
