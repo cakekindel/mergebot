@@ -68,6 +68,9 @@ use warp::Filter;
 /// Slack models
 pub mod slack;
 
+/// Git stuff
+pub mod git;
+
 /// Deployment stuff
 pub mod deploy;
 
