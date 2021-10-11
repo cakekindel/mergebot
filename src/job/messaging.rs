@@ -68,7 +68,13 @@ impl<T: slack::msg::Messages> Messenger for T {
 
     let blocks: Vec<slack_blocks::Block> = {
       use slack_blocks::blox::*;
-      vec![blox! {<section_block><text kind=mrkdwn>{"Job has been approved!"}</text></section_block>}.into()]
+      vec![blox! {
+             <section_block>
+               <text kind=mrkdwn>
+                 {format!("Deploy approved! :sunglasses: Let's go to {} :rocket:", job.command.env_name)}
+               </text>
+             </section_block>
+           }.into()]
     };
 
     self.send_thread(id, &blocks).map(|rep| rep.id)
