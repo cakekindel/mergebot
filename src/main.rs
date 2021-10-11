@@ -270,6 +270,8 @@ pub mod filters {
                         -> Result<warp::reply::WithStatus<String>, warp::reject::Rejection> {
     use slack::{Event, ReactionAddedItem as Item};
 
+    log::info!("{}", String::from_utf8_lossy(&body));
+
     let ev = match serde_json::from_slice::<slack::Event>(&body) {
       | Ok(b) => b,
       | Err(e) => {
