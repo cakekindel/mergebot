@@ -65,6 +65,9 @@ use log as _;
 use serde_json as _;
 use warp::Filter;
 
+/// Helper result methods
+pub mod result_extra;
+
 /// Slack models
 pub mod slack;
 

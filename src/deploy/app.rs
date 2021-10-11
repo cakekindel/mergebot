@@ -1,4 +1,5 @@
 use serde::{Deserialize as De, Serialize as Ser};
+
 use crate::git::Branch;
 
 /// A branch diff that, when merged, triggers a deploy
