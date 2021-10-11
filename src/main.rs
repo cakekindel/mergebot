@@ -258,7 +258,8 @@ pub mod filters {
         };
 
         let job = state.job_queue
-             .set_state(&job.id, job::State::Approved { msg_id, approved_by });
+             .set_state(&job.id, job::State::Approved { msg_id, approved_by })
+             .expect("job shouldn't be removed from queue");
 
         if let Err(e) = state.job_messenger.send_job_approved(&job) {
           log::error!("{:#?}", e);
