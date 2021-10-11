@@ -222,44 +222,55 @@ pub mod filters {
   }
 
   fn handle_approval(state: &'static State, job: &job::Job, user_id: &str) {
+    let need_approvers = job.outstanding_approvers();
     let outstanding_approver =
-      job.outstanding_approvers().into_iter().find(|u| match u {
-                                               | deploy::User::User { user_id: u_id, .. } => u_id == user_id,
-                                               | deploy::User::Group { group_id, .. } => {
-                                                 state.slack_groups
-                                                      .expand(group_id)
-                                                      .map_err(|e| log::error!("{:#?}", e))
-                                                      .unwrap_or_default()
-                                                      .contains(&user_id.to_string())
-                                               },
-                                             });
+      need_approvers.iter().find(|u| match u {
+                             | deploy::User::User { user_id: u_id, .. } => u_id == user_id,
+                             | deploy::User::Group { group_id, .. } => state.slack_groups
+                                                                            .expand(group_id)
+                                                                            .map_err(|e| log::error!("{:#?}", e))
+                                                                            .unwrap_or_default()
+                                                                            .contains(&user_id.to_string()),
+                           });
+    if outstanding_approver == None {
+      log::debug!("(job {}) user {} approved but isn't an approver: {:#?}",
+                  job.id,
+                  user_id,
+                  &need_approvers);
+    }
 
     if let Some(user) = outstanding_approver {
-      log::info!("user {:#?} thumbsed a post and we were waiting for their approval",
-                 user);
+      log::info!("(job {}) approved by {:#?}", job.id, user);
 
-      let mut job_copy = state.job_queue.lookup(&job.id).expect("job wasn't removed");
+      let mut new_state = state.job_queue.lookup(&job.id).expect("job wasn't removed").state;
 
-      if let job::State::Notified { ref mut approved_by, .. } = job_copy.state {
-        log::info!("job id {} has been approved", job_copy.id);
-        approved_by.push(user);
+      if let job::State::Notified { ref mut approved_by, .. } = new_state {
+        approved_by.push(user.clone());
       }
 
-      if job_copy.outstanding_approvers().len() == 0 {
-        let (approved_by, msg_id) = match job_copy.state {
+      let job = state.job_queue
+                     .set_state(&job.id, new_state.clone())
+                     .expect("job wasn't removed from queue");
+      let need_approvers = job.outstanding_approvers();
+
+      if need_approvers.is_empty() {
+        log::info!("(job {}) fully approved", job.id);
+
+        let (approved_by, msg_id) = match new_state {
           | job::State::Notified { approved_by: a,
                                    msg_id: m, } => (a, m),
           | _ => unreachable!(),
         };
 
-        state.job_queue
-             .set_state(&job.id, job::State::Approved { msg_id, approved_by });
-      } else {
-        state.job_queue.set_state(&job.id, job_copy.state);
+        let job = state.job_queue
+                       .set_state(&job.id, job::State::Approved { msg_id, approved_by })
+                       .expect("job wasn't removed from queue");
 
         if let Err(e) = state.job_messenger.send_job_approved(&job) {
           log::error!("{:#?}", e);
         }
+      } else {
+        log::info!("(job {}) still need approvers: {:?}", job.id, need_approvers);
       }
     }
   }
@@ -271,9 +282,9 @@ pub mod filters {
   async fn handle_event(body: bytes::Bytes,
                         state: &'static State)
                         -> Result<warp::reply::WithStatus<String>, warp::reject::Rejection> {
-    use slack::{Event, ReactionAddedItem as Item};
+    use slack::event::{Event, EventPayload::ReactionAdded, ReactionAddedItem as Item};
 
-    let ev = match serde_json::from_slice::<slack::Event>(&body) {
+    let ev = match serde_json::from_slice::<Event>(&body) {
       | Ok(b) => b,
       | Err(e) => {
         log::error!("{:#?}", e); // if slack sends us a bad body I need to know about it
@@ -283,20 +294,26 @@ pub mod filters {
 
     match ev {
       | Event::Challenge { challenge } => Ok(ok(challenge)),
-      | Event::ReactionAdded { user,
-                               reaction,
-                               item: Item::Message { channel, ts }, } => {
-        let matched_job = state.job_queue
-                               .cloned()
-                               .into_iter()
-                               .find(|j| match &j.state {
-                                 | job::State::Notified { msg_id, .. } => msg_id.eq(&channel, &ts),
-                                 | _ => false,
-                               })
-                               .and_then(|job| match reaction.as_str() {
-                                 | "thumbsup" => Some(job),
-                                 | _ => None,
-                               });
+      | Event::Event { team_id,
+                       event:
+                         ReactionAdded { user,
+                                         reaction,
+                                         item: Item::Message { channel, ts }, }, } => {
+        let matched_job =
+          state.job_queue
+               .cloned()
+               .into_iter()
+               .find(|j| match &j.state {
+                 | job::State::Notified { msg_id, .. } => j.app.team_id == team_id && msg_id.eq(&channel, &ts),
+                 | _ => false,
+               })
+               .and_then(|job| {
+                 log::info!("(job {}) user {} reacted {}", job.id, user, reaction);
+                 match reaction.as_str() {
+                   | "+1" => Some(job),
+                   | _ => None,
+                 }
+               });
 
         if let Some(j) = matched_job {
           handle_approval(state, &j, &user)
@@ -367,7 +384,7 @@ pub mod filters {
                          .map(|msg_id| mergebot.job_queue.set_state(&job.id, job::State::Notified{msg_id, approved_by: vec![]}))
                    }) // [6]
                    .map(|job| warp::reply::with_status(format!("```{:#?}```", job), http::StatusCode::OK))
-                   .map_err(|e| warp::reply::with_status(format!("Error processing command: {:#?}", e), http::StatusCode::OK))
+                   .map_err(|_| warp::reply::with_status(format!("Uh oh :confused: I wasn't able to do that. <https://github.com/cakekindel/mergebot/issues|Please file an issue>!"), http::StatusCode::OK))
              })
              .map(|rep| Ok(rep) as Result<warp::reply::WithStatus<String>, warp::reject::Rejection>)
              .unwrap_or_else(Ok)
