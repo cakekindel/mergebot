@@ -307,7 +307,10 @@ pub mod filters {
                })
                .and_then(|job| match reaction.as_str() {
                  | "thumbsup" => Some(job),
-                 | _ => None,
+                 | _ => {
+                   log::info!("user {} reacted {} to message for job {}, so I am not responding.", user, reaction, job.id);
+                   None
+                 },
                });
 
         if let Some(j) = matched_job {
