@@ -306,7 +306,7 @@ pub mod filters {
                  | _ => false,
                })
                .and_then(|job| match reaction.as_str() {
-                 | "thumbsup" => Some(job),
+                 | "+1" => Some(job),
                  | _ => {
                    log::info!("user {} reacted {} to message for job {}, so I am not responding.",
                               user,
