@@ -4,7 +4,11 @@ pub use queue::*;
 mod messaging;
 pub use messaging::*;
 
+pub mod exec;
+use chrono::{DateTime, Utc};
+
 use crate::{deploy::{App, Command, User},
+            git,
             slack};
 
 /// State a job may be in
@@ -28,6 +32,21 @@ pub enum State {
     /// People who have approved this deploy
     approved_by: Vec<User>,
   },
+  /// Job is about to be executed
+  WorkQueued,
+  /// Job execution failed. Will retry.
+  Errored {
+    /// Number of attempts so far
+    attempts: usize,
+    /// Next scheduled attempt
+    next_attempt: DateTime<Utc>,
+    /// Errors encountered during last attempt
+    errs: Vec<git::Error>,
+  },
+  /// Job execution failed more than 5 times. Will not retry.
+  Poisoned(Vec<git::Error>),
+  /// Job has been executed
+  Done,
 }
 
 /// A deploy job

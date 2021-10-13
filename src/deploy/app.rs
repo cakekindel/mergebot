@@ -1,8 +1,6 @@
 use serde::{Deserialize as De, Serialize as Ser};
 
-/// A git branch
-#[derive(PartialEq, Clone, Debug, Ser, De)]
-pub struct Branch(pub String);
+use crate::git::Branch;
 
 /// A branch diff that, when merged, triggers a deploy
 #[derive(PartialEq, Clone, Debug, Ser, De)]

@@ -30,7 +30,7 @@ fn fmt_approvers(approvers: &[&deploy::app::User]) -> String {
 }
 
 impl<T: slack::msg::Messages> Messenger for T {
-  fn send_job_created(&self, job: &Job) -> Result<slack::msg::Id, slack::Error> {
+  fn send_job_created(&self, job: &Job) -> slack::Result<slack::msg::Id> {
     let users = job.app
                    .repos
                    .iter()
