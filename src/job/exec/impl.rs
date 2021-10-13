@@ -41,30 +41,30 @@ fn exec(job: &Job) {
   let git = git_lock.as_ref().unwrap();
 
   let errs = job.app
-                   .repos
-                   .iter()
-                   .map(|app_repo| {
-                     let env = app_repo.environments
-                                       .iter()
-                                       .find(|env| env.name_eq(&job.command.env_name))
-                                       .expect("Environment was already matched against command");
+                .repos
+                .iter()
+                .map(|app_repo| {
+                  let env = app_repo.environments
+                                    .iter()
+                                    .find(|env| env.name_eq(&job.command.env_name))
+                                    .expect("Environment was already matched against command");
 
-                     git.repo(&app_repo.url, &job.app.name).and_then(|repo| {
-                                                             // fetch all upstreams
-                                                             repo.fetch_all()?;
-                                                             // switch base
-                                                             repo.switch(&env.base)?;
-                                                             // make sure base up to date
-                                                             repo.update_branch()?;
-                                                             // merge in target's upstream
-                                                             repo.upstream(&env.target).and_then(|b| repo.merge(&b))?;
+                  git.repo(&app_repo.url, &job.app.name).and_then(|repo| {
+                                                          // fetch all upstreams
+                                                          repo.fetch_all()?;
+                                                          // switch base
+                                                          repo.switch(&env.base)?;
+                                                          // make sure base up to date
+                                                          repo.update_branch()?;
+                                                          // merge in target's upstream
+                                                          repo.upstream(&env.target).and_then(|b| repo.merge(&b))?;
 
-                                                             // push changes
-                                                             repo.push()
-                                                           })
-                   })
-
-  .filter_map(|r| r.err()).collect::<Vec<_>>();
+                                                          // push changes
+                                                          repo.push()
+                                                        })
+                })
+                .filter_map(|r| r.err())
+                .collect::<Vec<_>>();
 
   if errs.is_empty() {
     job_q.set_state(&job.id, job::State::Done);

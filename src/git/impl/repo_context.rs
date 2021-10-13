@@ -1,9 +1,8 @@
-use std::{sync::{Mutex, MutexGuard}};
+use std::sync::{Mutex, MutexGuard};
 
 use git::{r#impl::LocalClient, Branch, Error, Output};
 
-
-use crate::{git};
+use crate::git;
 
 pub(super) struct RepoContext<'a> {
   lock: MutexGuard<'a, Option<LocalClient>>,

@@ -1,8 +1,6 @@
 use std::{path::{Path, PathBuf},
           process::Command,
-          sync::{Mutex}};
-
-
+          sync::Mutex};
 
 use crate::{git,
             git::{Error, Output},
