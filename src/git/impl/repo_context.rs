@@ -2,14 +2,10 @@ use std::{path::{Path, PathBuf},
           process::Command,
           sync::{Mutex, MutexGuard}};
 
+use git::{r#impl::LocalClient, Branch, Error, Output};
 use serde::{Deserialize as De, Serialize as Ser};
 
-use crate::{result_extra::ResultExtra, mutex_extra::lock_discard_poison};
-use crate::git;
-use git::Output;
-use git::Error;
-use git::Branch;
-use git::r#impl::LocalClient;
+use crate::{git, mutex_extra::lock_discard_poison, result_extra::ResultExtra};
 
 pub(super) struct RepoContext<'a> {
   lock: MutexGuard<'a, Option<LocalClient>>,
@@ -19,7 +15,7 @@ pub(super) struct RepoContext<'a> {
 impl<'a> RepoContext<'a> {
   pub(super) fn new(lock: MutexGuard<'a, Option<LocalClient>>) -> Self {
     let current_branch = Mutex::new(None);
-    Self {lock, current_branch}
+    Self { lock, current_branch }
   }
 
   fn client<T>(&self, f: impl FnOnce(&LocalClient) -> T) -> T {
@@ -31,26 +27,26 @@ impl<'a> git::RepoContext for RepoContext<'a> {
   fn upstream(&self, branch: &Branch) -> git::Result<Branch> {
     let config_entry = format!("branch.{}.remote", branch.0);
     self.client(|c| {
-      c.git(&["config", "--get", &config_entry])
-       .map(|Output(remote)| Branch(format!("{}/{}", remote, branch.0)))
-    })
+          c.git(&["config", "--get", &config_entry])
+           .map(|Output(remote)| Branch(format!("{}/{}", remote, branch.0)))
+        })
   }
 
   fn merge(&self, target: &Branch) -> git::Result<()> {
-    self.client(|c| {
-      c.git(&["merge", &target.0, "--message", "chore: mergebot deploy"])
-    }).map(|_| ())
+    self.client(|c| c.git(&["merge", &target.0, "--message", "chore: mergebot deploy"]))
+        .map(|_| ())
   }
 
   fn switch(&self, branch: &Branch) -> git::Result<()> {
     self.client(|c| {
-      let res = c.git(&["switch", &branch.0]);
-      if let Ok(_) = res {
-        let mut cur_branch = self.current_branch.lock().unwrap();
-        *cur_branch = Some(branch.clone());
-      }
-      res
-    }).map(|_| ())
+          let res = c.git(&["switch", &branch.0]);
+          if let Ok(_) = res {
+            let mut cur_branch = self.current_branch.lock().unwrap();
+            *cur_branch = Some(branch.clone());
+          }
+          res
+        })
+        .map(|_| ())
   }
 
   fn push(&self) -> git::Result<()> {
@@ -61,12 +57,11 @@ impl<'a> git::RepoContext for RepoContext<'a> {
     let cur_branch = self.current_branch.lock().unwrap();
 
     // reset --hard, we don't care about merging the upstream into our local
-    cur_branch
-      .as_ref()
-      .ok_or(Error::NoBranchToUpdate)
-      .and_then(|b| self.upstream(b))
-      .and_then(|up| self.client(|c| c.git(&["reset", &up.0, "--hard"])))
-      .map(|_| ())
+    cur_branch.as_ref()
+              .ok_or(Error::NoBranchToUpdate)
+              .and_then(|b| self.upstream(b))
+              .and_then(|up| self.client(|c| c.git(&["reset", &up.0, "--hard"])))
+              .map(|_| ())
   }
 
   fn fetch_all(&self) -> git::Result<()> {

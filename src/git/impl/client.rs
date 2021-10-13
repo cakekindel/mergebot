@@ -4,10 +4,10 @@ use std::{path::{Path, PathBuf},
 
 use serde::{Deserialize as De, Serialize as Ser};
 
-use crate::git;
-use crate::git::Output;
-use crate::git::Error;
-use crate::{result_extra::ResultExtra, mutex_extra::lock_discard_poison};
+use crate::{git,
+            git::{Error, Output},
+            mutex_extra::lock_discard_poison,
+            result_extra::ResultExtra};
 
 lazy_static::lazy_static! {
   /// A mutex capturing the exclusivity of using git on the hosted system.
@@ -76,13 +76,9 @@ impl git::Client for StaticClient {
     let mut lock = GIT_CLIENT.lock().map_err(|p| p.into_inner()).unwrap_or_else(|e| e);
 
     {
-      let git =
-      lock.as_mut()
-            .expect("was initialized");
-        git
-            .clone(url, dirname)
-            .map(|dir| git.cd(dir))
+      let git = lock.as_mut().expect("was initialized");
+      git.clone(url, dirname).map(|dir| git.cd(dir))
     }.map(|_| git::r#impl::RepoContext::new(lock))
-    .map(|c| Box::from(c) as Box<dyn git::RepoContext>)
+     .map(|c| Box::from(c) as Box<dyn git::RepoContext>)
   }
 }

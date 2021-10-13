@@ -1,9 +1,9 @@
+use std::{sync::{Condvar, Mutex, MutexGuard},
+          time::Duration};
+
+use chrono::Utc;
+
 use crate::{git, job, job::Job, mutex_extra::lock_discard_poison};
-
-use std::time::{Duration};
-use std::sync::{Mutex, MutexGuard, Condvar};
-
-use chrono::{Utc};
 
 // Dependencies
 lazy_static::lazy_static! {
@@ -28,34 +28,36 @@ struct Work {
 
 fn exec(job: &Job) -> () {
   // trust someone above us to make sure these are set before a job gets here
-  let job_q_lock =lock_discard_poison(&JOB_QUEUE);
-  let git_lock =lock_discard_poison(&GIT_CLIENT);
+  let job_q_lock = lock_discard_poison(&JOB_QUEUE);
+  let git_lock = lock_discard_poison(&GIT_CLIENT);
 
   let job_q = job_q_lock.as_ref().unwrap();
   let git = git_lock.as_ref().unwrap();
 
-  let results = job.app.repos.iter().map(|app_repo| {
-    let env = app_repo.environments
-                      .iter()
-                      .find(|env| env.name_eq(&job.command.env_name))
-                      .expect("Environment was already matched against command");
+  let results = job.app
+                   .repos
+                   .iter()
+                   .map(|app_repo| {
+                     let env = app_repo.environments
+                                       .iter()
+                                       .find(|env| env.name_eq(&job.command.env_name))
+                                       .expect("Environment was already matched against command");
 
-    git.repo(&app_repo.url, &job.app.name)
-       .and_then(|repo| {
-         // fetch all upstreams
-         repo.fetch_all()?;
-         // switch base
-         repo.switch(&env.base)?;
-         // make sure base up to date
-         repo.update_branch()?;
-         // merge in target's upstream
-         repo.upstream(&env.target)
-             .and_then(|b| repo.merge(&b))?;
+                     git.repo(&app_repo.url, &job.app.name).and_then(|repo| {
+                                                             // fetch all upstreams
+                                                             repo.fetch_all()?;
+                                                             // switch base
+                                                             repo.switch(&env.base)?;
+                                                             // make sure base up to date
+                                                             repo.update_branch()?;
+                                                             // merge in target's upstream
+                                                             repo.upstream(&env.target).and_then(|b| repo.merge(&b))?;
 
-         // push changes
-         repo.push()
-       })
-  }).collect::<Vec<Result<(), git::Error>>>();
+                                                             // push changes
+                                                             repo.push()
+                                                           })
+                   })
+                   .collect::<Vec<Result<(), git::Error>>>();
 
   let errs = results.into_iter().filter_map(|r| r.err()).collect::<Vec<_>>();
 
@@ -63,14 +65,16 @@ fn exec(job: &Job) -> () {
     job_q.set_state(&job.id, job::State::Done);
   } else {
     let attempts = match &job.state {
-      &job::State::Errored {attempts, ..} => attempts + 1,
-      _ => 1,
+      | &job::State::Errored { attempts, .. } => attempts + 1,
+      | _ => 1,
     };
 
     let next_attempt = Utc::now() + chrono::Duration::seconds(5);
 
     log::error!("job {}: executing encountered errors {:?}", job.id, errs);
-    let new_state = job::State::Errored {attempts, next_attempt, errs};
+    let new_state = job::State::Errored { attempts,
+                                          next_attempt,
+                                          errs };
 
     job_q.set_state(&job.id, new_state);
   }
@@ -83,12 +87,12 @@ pub struct Executor;
 impl super::Executor for Executor {
   fn schedule_exec(&self, job: &Job) -> super::Result<()> {
     match &job.state {
-      &job::State::Approved {..} => (),
-      s => Err(super::Error::InvalidJobState(s.clone()))?,
+      | &job::State::Approved { .. } => (),
+      | s => Err(super::Error::InvalidJobState(s.clone()))?,
     };
 
-    let work = Work{job: job.clone()};
-    let q = &mut*lock_discard_poison(&QUEUE);
+    let work = Work { job: job.clone() };
+    let q = &mut *lock_discard_poison(&QUEUE);
     q.push(work);
 
     Ok(())
@@ -98,34 +102,30 @@ impl super::Executor for Executor {
 /// Pull work out of the work queue
 fn get_work() -> Option<(Work, Duration)> {
   let mut q: MutexGuard<'_, Vec<Work>> = lock_discard_poison(&QUEUE);
-  let mut work = 
-       (*q).iter()
-       .enumerate()
-       .filter_map(|(ix, w)| {
-         match w.job.state {
-           job::State::WorkQueued => Some((ix, Default::default())),
-           job::State::Errored {next_attempt, ..} => {
-             let dur: chrono::Duration = next_attempt.signed_duration_since(Utc::now());
-             Some((ix, dur.to_std().unwrap_or_default()))
-           },
-           _ => {
-             log::error!("job of state {:?} should not be in work queue", w.job.state);
-             None
-           },
-         }
-       })
-       .collect::<Vec<_>>();
+  let mut work = (*q).iter()
+                     .enumerate()
+                     .filter_map(|(ix, w)| match w.job.state {
+                       | job::State::WorkQueued => Some((ix, Default::default())),
+                       | job::State::Errored { next_attempt, .. } => {
+                         let dur: chrono::Duration = next_attempt.signed_duration_since(Utc::now());
+                         Some((ix, dur.to_std().unwrap_or_default()))
+                       },
+                       | _ => {
+                         log::error!("job of state {:?} should not be in work queue", w.job.state);
+                         None
+                       },
+                     })
+                     .collect::<Vec<_>>();
 
-   work.sort_by_key(|(_, dur)| *dur);
+  work.sort_by_key(|(_, dur)| *dur);
 
-   // Yield the work to be done soonest
-   work.get(0)
-       .map(|&(ix, dur)| ((*q).remove(ix), dur))
+  // Yield the work to be done soonest
+  work.get(0).map(|&(ix, dur)| ((*q).remove(ix), dur))
 }
 
 /// Worker thread logic
 fn worker() {
-  use std::thread::{sleep};
+  use std::thread::sleep;
 
   loop {
     if let Some((work, time_til)) = get_work() {
@@ -144,10 +144,10 @@ fn worker() {
       log::info!("Waiting for work to be queued");
       let lock = lock_discard_poison(&WORK_QUEUED.0);
 
-      let work_queued = WORK_QUEUED
-        .1
-        .wait(lock)
-        .expect("if a thread (this or main) panicked holding a lock, this code is unreachable.");
+      let work_queued =
+        WORK_QUEUED.1
+                   .wait(lock)
+                   .expect("if a thread (this or main) panicked holding a lock, this code is unreachable.");
 
       drop(work_queued);
     }

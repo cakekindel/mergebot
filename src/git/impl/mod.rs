@@ -1,5 +1,6 @@
+use std::path::PathBuf;
+
 use crate::mutex_extra::lock_discard_poison;
-use std::{path::{PathBuf},};
 
 mod client;
 mod repo_context;

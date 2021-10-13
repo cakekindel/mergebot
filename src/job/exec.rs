@@ -1,5 +1,6 @@
-use crate::job;
 use job::Job;
+
+use crate::job;
 
 /// Implementation
 pub mod r#impl;

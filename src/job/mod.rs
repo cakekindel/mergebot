@@ -5,12 +5,12 @@ mod messaging;
 pub use messaging::*;
 
 mod exec;
+use chrono::{DateTime, Utc};
 pub use exec::*;
 
-use chrono::{DateTime, Utc};
-
 use crate::{deploy::{App, Command, User},
-            slack, git};
+            git,
+            slack};
 
 /// State a job may be in
 #[derive(Clone, Debug)]
