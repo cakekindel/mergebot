@@ -51,7 +51,6 @@
 //! [`standard-version`]: https://www.npmjs.com/package/standard-version
 //! [conventional commits]: https://www.conventionalcommits.org/en/v1.0.0/
 
-#![deny(missing_docs, missing_doc_code_examples)]
 #![cfg_attr(not(test),
             forbid(missing_debug_implementations,
                    unreachable_pub,
@@ -67,6 +66,9 @@ use warp::Filter;
 
 /// Helper result methods
 pub mod result_extra;
+
+/// Helper mutex functions
+pub mod mutex_extra;
 
 /// Slack models
 pub mod slack;
