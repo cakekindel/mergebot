@@ -1,11 +1,9 @@
-use std::{path::{Path, PathBuf},
-          process::Command,
-          sync::{Mutex, MutexGuard}};
+use std::{sync::{Mutex, MutexGuard}};
 
 use git::{r#impl::LocalClient, Branch, Error, Output};
-use serde::{Deserialize as De, Serialize as Ser};
 
-use crate::{git, mutex_extra::lock_discard_poison, result_extra::ResultExtra};
+
+use crate::{git};
 
 pub(super) struct RepoContext<'a> {
   lock: MutexGuard<'a, Option<LocalClient>>,
@@ -40,7 +38,7 @@ impl<'a> git::RepoContext for RepoContext<'a> {
   fn switch(&self, branch: &Branch) -> git::Result<()> {
     self.client(|c| {
           let res = c.git(&["switch", &branch.0]);
-          if let Ok(_) = res {
+          if res.is_ok() {
             let mut cur_branch = self.current_branch.lock().unwrap();
             *cur_branch = Some(branch.clone());
           }

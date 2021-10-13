@@ -1,8 +1,8 @@
 use std::{path::{Path, PathBuf},
           process::Command,
-          sync::{Mutex, MutexGuard}};
+          sync::{Mutex}};
 
-use serde::{Deserialize as De, Serialize as Ser};
+
 
 use crate::{git,
             git::{Error, Output},
@@ -40,7 +40,7 @@ impl LocalClient {
     Self { homedir, workdir }
   }
 
-  pub(super) fn cd(&self, new_path: impl Into<PathBuf>) -> () {
+  pub(super) fn cd(&self, new_path: impl Into<PathBuf>) {
     *lock_discard_poison(&self.workdir) = new_path.into();
   }
 

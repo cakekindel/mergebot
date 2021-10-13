@@ -4,9 +4,8 @@ pub use queue::*;
 mod messaging;
 pub use messaging::*;
 
-mod exec;
+pub mod exec;
 use chrono::{DateTime, Utc};
-pub use exec::*;
 
 use crate::{deploy::{App, Command, User},
             git,

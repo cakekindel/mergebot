@@ -5,10 +5,16 @@ use chrono::Utc;
 
 use crate::{git, job, job::Job, mutex_extra::lock_discard_poison};
 
+/// Initialize executor worker thread
+pub fn init(job_q: Box<dyn job::Queue>, git: Box<dyn crate::git::Client>) {
+  *lock_discard_poison(&JOB_QUEUE) = Some(job_q);
+  *lock_discard_poison(&GIT_CLIENT) = Some(git);
+}
+
 // Dependencies
 lazy_static::lazy_static! {
-  static ref JOB_QUEUE: Mutex<Option<Box<dyn job::Queue>>> = Mutex::new(None);
-  static ref GIT_CLIENT: Mutex<Option<Box<dyn git::Client>>> = Mutex::new(None);
+  pub(super) static ref JOB_QUEUE: Mutex<Option<Box<dyn job::Queue>>> = Mutex::new(None);
+  pub(super) static ref GIT_CLIENT: Mutex<Option<Box<dyn git::Client>>> = Mutex::new(None);
 }
 
 // Worker variables
@@ -26,7 +32,7 @@ struct Work {
   job: Job,
 }
 
-fn exec(job: &Job) -> () {
+fn exec(job: &Job) {
   // trust someone above us to make sure these are set before a job gets here
   let job_q_lock = lock_discard_poison(&JOB_QUEUE);
   let git_lock = lock_discard_poison(&GIT_CLIENT);
@@ -34,7 +40,7 @@ fn exec(job: &Job) -> () {
   let job_q = job_q_lock.as_ref().unwrap();
   let git = git_lock.as_ref().unwrap();
 
-  let results = job.app
+  let errs = job.app
                    .repos
                    .iter()
                    .map(|app_repo| {
@@ -57,9 +63,8 @@ fn exec(job: &Job) -> () {
                                                              repo.push()
                                                            })
                    })
-                   .collect::<Vec<Result<(), git::Error>>>();
 
-  let errs = results.into_iter().filter_map(|r| r.err()).collect::<Vec<_>>();
+  .filter_map(|r| r.err()).collect::<Vec<_>>();
 
   if errs.is_empty() {
     job_q.set_state(&job.id, job::State::Done);
@@ -88,7 +93,7 @@ impl super::Executor for Executor {
   fn schedule_exec(&self, job: &Job) -> super::Result<()> {
     match &job.state {
       | &job::State::Approved { .. } => (),
-      | s => Err(super::Error::InvalidJobState(s.clone()))?,
+      | s => return Err(super::Error::InvalidJobState(s.clone())),
     };
 
     let work = Work { job: job.clone() };

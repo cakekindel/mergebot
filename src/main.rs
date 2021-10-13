@@ -106,23 +106,36 @@ pub struct State {
   pub slack_groups: Box<dyn slack::groups::Groups>,
   /// slack msg API
   pub slack_msg: Box<dyn slack::msg::Messages>,
+  /// git client
+  pub git: Box<dyn git::Client>,
+  /// transition jobs from "Approved" -> "Done" | "Poisoned"
+  pub job_executor: Box<dyn job::exec::Executor>,
 }
 
 lazy_static::lazy_static! {
   static ref CLIENT: reqwest::blocking::Client =reqwest::blocking::Client::new();
   static ref STATE: State = {
-    let slack_token =env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required");
+    let slack_token = env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required");
     let slack_api = slack::Api::new(&slack_token, &CLIENT);
+
+    git::r#impl::init(env::var("GIT_WORKDIR").expect("GIT_WORKDIR required"));
+
+    let git = git::r#impl::StaticClient;
+    let job_q = job::MemQueue;
+
+    job::exec::r#impl::init(Box::from(job_q), Box::from(git));
 
     State {
       slack_signing_secret: env::var("SLACK_SIGNING_SECRET").expect("SLACK_SIGNING_SECRET required"),
       slack_api_token: slack_token,
-      job_queue: Box::from(job::MemQueue),
+      job_queue: Box::from(job_q),
       app_reader: Box::from(deploy::app::JsonFile),
       reqwest_client: &CLIENT,
       slack_groups: Box::from(slack_api.clone()),
       job_messenger: Box::from(slack_api.clone()),
       slack_msg: Box::from(slack_api),
+      git: Box::from(git),
+      job_executor: Box::from(job::exec::r#impl::Executor),
     }
   };
 }
@@ -389,7 +402,7 @@ pub mod filters {
                          .map(|msg_id| mergebot.job_queue.set_state(&job.id, job::State::Notified{msg_id, approved_by: vec![]}))
                    }) // [6]
                    .map(|job| warp::reply::with_status(format!("```{:#?}```", job), http::StatusCode::OK))
-                   .map_err(|_| warp::reply::with_status(format!("Uh oh :confused: I wasn't able to do that. <https://github.com/cakekindel/mergebot/issues|Please file an issue>!"), http::StatusCode::OK))
+                   .map_err(|_| warp::reply::with_status("Uh oh :confused: I wasn't able to do that. <https://github.com/cakekindel/mergebot/issues|Please file an issue>!".to_string(), http::StatusCode::OK))
              })
              .map(|rep| Ok(rep) as Result<warp::reply::WithStatus<String>, warp::reject::Rejection>)
              .unwrap_or_else(Ok)
