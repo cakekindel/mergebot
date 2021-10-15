@@ -183,6 +183,7 @@ pub async fn main() {
 
   let api = filters::api(create_state_filter).with(warp::log("mergebot"));
 
+  let _ = &STATE; // make sure init work is done
   Arc::clone(&APP_INIT).wait();
 
   warp::serve(api).run(([127, 0, 0, 1], 3030)).await;
