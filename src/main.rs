@@ -54,9 +54,8 @@
 #![cfg_attr(not(test),
             forbid(missing_debug_implementations,
                    unreachable_pub,
-                   unsafe_code,
                    unused_crate_dependencies))]
-#![cfg_attr(not(test), deny(missing_copy_implementations))]
+#![cfg_attr(not(test), deny(unsafe_code, missing_copy_implementations))]
 
 use std::{env,
           sync::{Arc, Barrier}};

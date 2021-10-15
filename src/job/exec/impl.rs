@@ -1,5 +1,5 @@
 use std::{sync::{Condvar, Mutex, MutexGuard},
-          time::Duration};
+          time::Duration, thread};
 
 use chrono::Utc;
 
@@ -7,9 +7,17 @@ use crate::{git, job, job::Job, mutex_extra::lock_discard_poison};
 
 /// Initialize executor worker thread
 pub fn init(job_q: Box<dyn job::Queue>, git: Box<dyn crate::git::Client>) {
+  #[allow(unsafe_code)]
+  // use a mut static for one-time initialization of the worker thread
+  unsafe {
+    WORKER = Some(std::thread::spawn(worker));
+  }
   *lock_discard_poison(&JOB_QUEUE) = Some(job_q);
   *lock_discard_poison(&GIT_CLIENT) = Some(git);
 }
+
+/// Worker thread handle
+static mut WORKER: Option<thread::JoinHandle<()>> = None;
 
 // Dependencies
 lazy_static::lazy_static! {
@@ -23,8 +31,6 @@ lazy_static::lazy_static! {
   static ref QUEUE: Mutex<Vec<Work>> = Mutex::new(Vec::new());
   /// Notifies worker thread to wake up if it slept on empty queue
   static ref WORK_QUEUED: (Mutex<()>, Condvar) = (Mutex::new(()), Condvar::new());
-  /// Handle for worker thread
-  static ref WORKER: std::thread::JoinHandle<()> = std::thread::spawn(worker);
 }
 
 /// Work to be picked up by worker thread
