@@ -17,7 +17,7 @@ impl Output {
 }
 
 /// Git errors
-#[derive(PartialEq, Clone, Debug)]
+#[derive(Ser, De, PartialEq, Clone, Debug)]
 pub enum Error {
   /// Couldn't spawn git command
   CouldNotSpawnGit(String),

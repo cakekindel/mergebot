@@ -1,3 +1,5 @@
+use serde::{Deserialize as De, Serialize as Ser};
+
 mod queue;
 pub use queue::*;
 
@@ -12,7 +14,7 @@ use crate::{deploy::{App, Command, User},
             slack};
 
 /// State a job may be in
-#[derive(Clone, Debug)]
+#[derive(Ser, De, Clone, Debug)]
 pub enum State {
   /// Job was initiated and nobody has been notified
   Initiated,
@@ -50,7 +52,7 @@ pub enum State {
 }
 
 /// A deploy job
-#[derive(Clone, Debug)]
+#[derive(Ser, De, Clone, Debug)]
 pub struct Job {
   /// Unique identifier for this job
   pub id: String,
