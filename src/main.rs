@@ -58,8 +58,8 @@
                    unused_crate_dependencies))]
 #![cfg_attr(not(test), deny(missing_copy_implementations))]
 
-use std::env;
-use std::sync::{Barrier, Arc};
+use std::{env,
+          sync::{Arc, Barrier}};
 
 use log as _;
 use serde_json as _;
