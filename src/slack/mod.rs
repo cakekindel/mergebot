@@ -51,8 +51,8 @@ pub fn request_authentic(state: &'static crate::State,
 
   type HmacSha256 = Hmac<Sha256>;
 
-  let ts = ts.to_str().unwrap();
-  let inbound_sig = inbound_sig.to_str().unwrap();
+  let ts = String::from_utf8_lossy(ts.as_bytes()).to_string();
+  let inbound_sig = String::from_utf8_lossy(inbound_sig.as_bytes()).to_string();
   let base_string = [b"v0:", ts.as_bytes(), b":", &bytes].concat();
 
   let mut mac = HmacSha256::new_from_slice(state.slack_signing_secret.as_bytes()).unwrap();

@@ -94,6 +94,8 @@ pub struct State {
   pub slack_signing_secret: String,
   /// slack api token
   pub slack_api_token: String,
+  /// API token used to access jobs api
+  pub api_key: String,
   /// notifies approvers
   pub job_messenger: Box<dyn job::Messenger>,
   /// Job queue
@@ -126,6 +128,7 @@ lazy_static::lazy_static! {
     job::exec::r#impl::init(Box::from(job_q), Box::from(git));
 
     State {
+      api_key: env::var("API_KEY").expect("API_KEY required"),
       slack_signing_secret: env::var("SLACK_SIGNING_SECRET").expect("SLACK_SIGNING_SECRET required"),
       slack_api_token: slack_token,
       job_queue: Box::from(job_q),
@@ -216,10 +219,35 @@ pub mod filters {
   pub fn api(state: fn() -> StateFilter) -> filter!() {
     hello().or(handle_command(state))
            .or(event_filter(state))
+           .or(get_jobs(state))
            .recover(handle_unauthorized)
   }
 
-  /// https://api.slack.com/authentication/verifying-requests-from-slack
+  fn api_key(state: StateFilter) -> filter!(()) {
+    warp::filters::header::value("X-Api-Key")
+      .and(state)
+      .and_then(|t: http::HeaderValue, state: &'static State| async move {
+        match t == state.api_key {
+          true => Ok(()),
+          false => Err(warp::reject::custom(Unauthorized)),
+        }
+      })
+      .untuple_one()
+  }
+
+  fn get_jobs(state: fn() -> StateFilter) -> filter!() {
+    state()
+      .and(warp::path!("api" / "v1" / "jobs"))
+      .and(warp::get())
+      .and(api_key(state()))
+      .map(
+          |state: &'static State| {
+            warp::reply::json(&state.job_queue.cloned())
+          }
+      )
+  }
+
+  /// <https://api.slack.com/authentication/verifying-requests-from-slack>
   fn slack_request_authentic(mergebot_state: StateFilter) -> filter!((bytes::Bytes,), Rejection) {
     mergebot_state.and(warp::filters::body::bytes())
                   .and(warp::filters::header::value("X-Slack-Request-Timestamp"))

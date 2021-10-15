@@ -1,3 +1,4 @@
+use serde::{Deserialize as De, Serialize as Ser};
 use std::convert::TryFrom;
 
 pub use app::*;
@@ -8,7 +9,7 @@ use crate::slack;
 pub mod app;
 
 /// Struct representing a parsed, well-formed /deploy command
-#[derive(Clone, Debug)]
+#[derive(Ser, De, Clone, Debug)]
 pub struct Command {
   /// Application to deploy
   pub app_name: String,
