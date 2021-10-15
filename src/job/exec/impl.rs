@@ -100,6 +100,8 @@ impl super::Executor for Executor {
     let q = &mut *lock_discard_poison(&QUEUE);
     q.push(work);
 
+    WORK_QUEUED.1.notify_all();
+
     Ok(())
   }
 }

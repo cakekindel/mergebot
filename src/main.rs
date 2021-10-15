@@ -224,27 +224,21 @@ pub mod filters {
   }
 
   fn api_key(state: StateFilter) -> filter!(()) {
-    warp::filters::header::value("X-Api-Key")
-      .and(state)
-      .and_then(|t: http::HeaderValue, state: &'static State| async move {
-        match t == state.api_key {
-          true => Ok(()),
-          false => Err(warp::reject::custom(Unauthorized)),
-        }
-      })
-      .untuple_one()
+    warp::filters::header::value("X-Api-Key").and(state)
+                                             .and_then(|t: http::HeaderValue, state: &'static State| async move {
+                                               match t == state.api_key {
+                                                 | true => Ok(()),
+                                                 | false => Err(warp::reject::custom(Unauthorized)),
+                                               }
+                                             })
+                                             .untuple_one()
   }
 
   fn get_jobs(state: fn() -> StateFilter) -> filter!() {
-    state()
-      .and(warp::path!("api" / "v1" / "jobs"))
-      .and(warp::get())
-      .and(api_key(state()))
-      .map(
-          |state: &'static State| {
-            warp::reply::json(&state.job_queue.cloned())
-          }
-      )
+    state().and(warp::path!("api" / "v1" / "jobs"))
+           .and(warp::get())
+           .and(api_key(state()))
+           .map(|state: &'static State| warp::reply::json(&state.job_queue.cloned()))
   }
 
   /// <https://api.slack.com/authentication/verifying-requests-from-slack>
