@@ -59,6 +59,7 @@
 #![cfg_attr(not(test), deny(missing_copy_implementations))]
 
 use std::env;
+use std::sync::{Barrier, Arc};
 
 use log as _;
 use serde_json as _;
@@ -115,6 +116,7 @@ pub struct State {
 }
 
 lazy_static::lazy_static! {
+  static ref APP_INIT: Arc<Barrier> = Arc::new(Barrier::new(2));
   static ref CLIENT: reqwest::blocking::Client =reqwest::blocking::Client::new();
   static ref STATE: State = {
     let slack_token = env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required");
@@ -181,6 +183,8 @@ pub async fn main() {
   dotenv::dotenv().ok();
 
   let api = filters::api(create_state_filter).with(warp::log("mergebot"));
+
+  Arc::clone(&APP_INIT).wait();
 
   warp::serve(api).run(([127, 0, 0, 1], 3030)).await;
 }
