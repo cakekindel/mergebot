@@ -1,7 +1,7 @@
-use serde::{Deserialize as De, Serialize as Ser};
 use std::convert::TryFrom;
 
 pub use app::*;
+use serde::{Deserialize as De, Serialize as Ser};
 
 use crate::slack;
 

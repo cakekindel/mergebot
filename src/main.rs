@@ -59,6 +59,7 @@
 #![cfg_attr(not(test), deny(missing_copy_implementations))]
 
 use std::env;
+use std::sync::{Barrier, Arc};
 
 use log as _;
 use serde_json as _;
@@ -115,6 +116,7 @@ pub struct State {
 }
 
 lazy_static::lazy_static! {
+  static ref APP_INIT: Arc<Barrier> = Arc::new(Barrier::new(2));
   static ref CLIENT: reqwest::blocking::Client =reqwest::blocking::Client::new();
   static ref STATE: State = {
     let slack_token = env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required");
@@ -182,6 +184,8 @@ pub async fn main() {
 
   let api = filters::api(create_state_filter).with(warp::log("mergebot"));
 
+  Arc::clone(&APP_INIT).wait();
+
   warp::serve(api).run(([127, 0, 0, 1], 3030)).await;
 }
 
@@ -224,27 +228,21 @@ pub mod filters {
   }
 
   fn api_key(state: StateFilter) -> filter!(()) {
-    warp::filters::header::value("X-Api-Key")
-      .and(state)
-      .and_then(|t: http::HeaderValue, state: &'static State| async move {
-        match t == state.api_key {
-          true => Ok(()),
-          false => Err(warp::reject::custom(Unauthorized)),
-        }
-      })
-      .untuple_one()
+    warp::filters::header::value("X-Api-Key").and(state)
+                                             .and_then(|t: http::HeaderValue, state: &'static State| async move {
+                                               match t == state.api_key {
+                                                 | true => Ok(()),
+                                                 | false => Err(warp::reject::custom(Unauthorized)),
+                                               }
+                                             })
+                                             .untuple_one()
   }
 
   fn get_jobs(state: fn() -> StateFilter) -> filter!() {
-    state()
-      .and(warp::path!("api" / "v1" / "jobs"))
-      .and(warp::get())
-      .and(api_key(state()))
-      .map(
-          |state: &'static State| {
-            warp::reply::json(&state.job_queue.cloned())
-          }
-      )
+    state().and(warp::path!("api" / "v1" / "jobs"))
+           .and(warp::get())
+           .and(api_key(state()))
+           .map(|state: &'static State| warp::reply::json(&state.job_queue.cloned()))
   }
 
   /// <https://api.slack.com/authentication/verifying-requests-from-slack>

@@ -100,6 +100,8 @@ impl super::Executor for Executor {
     let q = &mut *lock_discard_poison(&QUEUE);
     q.push(work);
 
+    WORK_QUEUED.1.notify_all();
+
     Ok(())
   }
 }
@@ -131,6 +133,8 @@ fn get_work() -> Option<(Work, Duration)> {
 /// Worker thread logic
 fn worker() {
   use std::thread::sleep;
+
+  std::sync::Arc::clone(&crate::APP_INIT).wait();
 
   loop {
     if let Some((work, time_til)) = get_work() {
