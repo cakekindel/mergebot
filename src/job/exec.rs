@@ -6,7 +6,7 @@ use crate::job;
 pub mod r#impl;
 
 /// Execute errors
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Error {
 }
 

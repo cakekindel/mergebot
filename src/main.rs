@@ -130,7 +130,7 @@ lazy_static::lazy_static! {
 
     let jobs = Arc::new(Mutex::new(job::store::StoreData::new()));
 
-    job::exec::r#impl::init(Box::from(jobs), Box::from(git));
+    job::exec::r#impl::init(Box::from(jobs.clone()), Box::from(git));
 
     State {
       api_key: env::var("API_KEY").expect("API_KEY required"),
@@ -247,7 +247,7 @@ pub mod filters {
     state().and(warp::path!("api" / "v1" / "jobs"))
            .and(warp::get())
            .and(api_key(state()))
-           .map(|state: &'static State| warp::reply::json(state.jobs.get_store()))
+           .map(|state: &'static State| warp::reply::json(&state.jobs.get_all()))
   }
 
   /// <https://api.slack.com/authentication/verifying-requests-from-slack>
@@ -274,8 +274,9 @@ pub mod filters {
     use deploy::User;
 
     let user =
-      job.outstanding_approvers()
-      .iter()
+      job
+      .outstanding_approvers()
+      .into_iter()
       .find(|u| match u {
         | User::User { user_id: u_id, .. } => u_id == user_id,
         | User::Group { group_id, .. } => state.slack_groups
@@ -286,7 +287,7 @@ pub mod filters {
       });
 
     if user.is_none() {
-      log::debug!("(job {}) user {} approved but isn't an approver",
+      log::debug!("(job {:?}) user {} approved but isn't an approver",
                   job.id,
                   user_id);
     }
@@ -321,10 +322,11 @@ pub mod filters {
                                          reaction,
                                          item: Item::Message { channel, ts }, }, } => {
         let matched_job =
-          state.get_all_new()
+          state.jobs
+               .get_all_new()
                .into_iter()
-               .find(|j| match j.state.msg_id {
-                 | Some(job::StateInit { msg_id, .. }) => j.app.team_id == team_id && msg_id.eq(&channel, &ts),
+               .find(|j| match j.state.msg_id.as_ref() {
+                 | Some(msg_id) => j.app.team_id == team_id && msg_id.equals(&channel, &ts),
                  | _ => false,
                })
                .and_then(|job| {
@@ -380,20 +382,21 @@ pub mod filters {
              })
              .and_then(|slash| {
                deploy::Command::try_from(slash) // [1]
-                   .and_then(|cmd| mergebot.app_reader.get_for_cmd(&cmd).map(|app| (cmd, app))) // [2], [3], [4]
+                   .and_then(|cmd| mergebot.app_reader.get_matching_cmd(&cmd).map(|app| (cmd, app))) // [2], [3], [4]
                    .and_then(|(cmd, app)| {
                      let existing = mergebot
                        .jobs
                        .get_all()
                        .into_iter()
                        .find(
-                           |j| j.app == app && &j.command.env_name.loose_eq(cmd.env_name)
+                           |j| j.app == app && j.command.env_name.loose_eq(&cmd.env_name)
                        );
 
                      if let Some(job) = existing {
                        Err(deploy::Error::JobAlreadyQueued(job))
                      } else {
                        Ok(mergebot.jobs.create(app, cmd))
+                         .map(|id| mergebot.jobs.get_new(&id).unwrap().clone())
                      }
                    }) // [5]
                    .and_then(|job| {

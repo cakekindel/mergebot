@@ -109,11 +109,12 @@ pub struct App {
 impl App {
   /// Get an iterator yielding clones of all users (approvers or not) for the application.
   /// Will likely contain duplicates.
-  pub fn iter_users(&self) -> impl Iterator<Item = User> {
+  pub fn users(&self, env_name: &str) -> Vec<User> {
     self.repos
         .iter()
-        .flat_map(|r| r.environments.iter().filter(|env| env.name_eq(&self.command.env_name)))
+        .flat_map(|r| r.environments.iter().filter(|env| env.name_eq(env_name)))
         .flat_map(|env| env.users.clone())
+        .collect::<Vec<_>>()
   }
 }
 
@@ -133,13 +134,16 @@ pub trait Reader: 'static + Sync + Send + std::fmt::Debug {
   fn read(&self) -> Result<Vec<App>, ReadError>;
 
   /// Find app matching a deploy command
-  fn get_matching_cmd(&self, cmd: &Command) -> Result<Vec<App>, super::Error> {
+  fn get_matching_cmd(&self, cmd: &super::Command) -> Result<App, super::Error> {
+    use super::Error;
     use super::Error::*;
+    use crate::extra::StrExtra;
+    use crate::result_extra::ResultExtra;
 
     let loose_eq = |a: &str, b: &str| a.trim().to_lowercase() == b.trim().to_lowercase();
 
     let env_matches = |env: &Mergeable| -> bool {
-      loose_eq(env.name, cmd.env_name) && env.users.iter().any(|u| u.user_id() == Some(&cmd.user_id))
+      env.name.loose_eq(&cmd.env_name) && env.users.iter().any(|u| u.user_id() == Some(&cmd.user_id))
     };
 
     let matches_env_and_user = |app: &App| -> bool {
@@ -153,14 +157,15 @@ pub trait Reader: 'static + Sync + Send + std::fmt::Debug {
     let matches_team = |apps: Vec<App>| -> Result<App, Error> {
       apps.into_iter()
           .find(matches_app)
-          .ok_or_else(|| Err(AppNotFound(cmd.app_name.clone())))
+          .ok_or_else(|| AppNotFound(cmd.app_name.clone()))
     };
 
     self.read()
         .map_err(ReadingApps)
         .and_then(matches_team)
-        .filter(matches_env_and_user, |_| Err(EnvNotFound(cmd.app_name.clone(), cmd.env_name.clone())))
-  }}
+        .filter(matches_env_and_user, |_| EnvNotFound(cmd.app_name.clone(), cmd.env_name.clone()))
+  }
+}
 
 /// ZST that implements Reader for `deployables.json`
 #[derive(Debug, Clone, Copy)]
@@ -171,9 +176,5 @@ impl Reader for JsonFile {
     std::fs::read_to_string(std::path::Path::new("./deployables.json"))
             .map_err(ReadError::Io)
             .and_then(|json| serde_json::from_str(&json).map_err(ReadError::Json))
-  }
-
-  fn get_matching_cmd(&self, cmd: &Command) -> Result<Option<App>, ReadError> {
-
   }
 }

@@ -41,6 +41,15 @@ enum Work {
 }
 
 impl Work {
+  fn job(&self) -> Job<job::States> {
+    use job::State;
+
+    match self {
+      Self::New(j) => j.map_state(|s| s.to_states()),
+      Self::Retry(j) => j.map_state(|s| s.to_states()),
+    }
+  }
+
   fn time_til(&self) -> Duration {
     match self {
       Self::Retry(job) => {
@@ -91,7 +100,7 @@ fn exec<S: job::State>(job: &Job<S>) {
                                                           repo.push()
                                                         })
                 })
-                .filter_map(|r| r.err())
+                .filter_map(|r| r.err().map(job::Error::Git))
                 .collect::<Vec<_>>();
 
   if errs.is_empty() {
@@ -99,7 +108,7 @@ fn exec<S: job::State>(job: &Job<S>) {
   } else {
     jobs.state_errored(&job.id, errs);
 
-    let work = Work::Errored(jobs.get_errored(&job.id).unwrap());
+    let work = Work::Retry(jobs.get_errored(&job.id).unwrap().clone());
     work.queue();
   }
 }
@@ -137,17 +146,17 @@ fn worker() {
 
   loop {
     if let Some((work, time_til)) = get_work() {
-      log::info!("job {}: work picked", work.job.id);
+      log::info!("job {:?}: work picked", work.job().id);
 
       if !time_til.is_zero() {
         // REVISIT: if this wait is long, fresh work
         //          will be blocked until done waiting
-        log::info!("job {}: waiting for {}ms to retry", work.job.id, time_til.as_millis());
+        log::info!("job {:?}: waiting for {}ms to retry", work.job().id, time_til.as_millis());
         sleep(time_til);
       }
 
-      log::info!("job {}: working", work.job.id);
-      exec(&work.job);
+      log::info!("job {:?}: working", work.job().id);
+      exec(&work.job());
     } else {
       log::info!("Waiting for work to be queued");
       let lock = lock_discard_poison(&WORK_QUEUED.0);

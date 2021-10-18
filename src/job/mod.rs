@@ -43,7 +43,7 @@ pub trait Hook<S: State> {
 }
 
 /// State a job may be in
-pub trait State {
+pub trait State: std::fmt::Debug + Clone {
   fn to_states(self) -> States;
 }
 
@@ -137,10 +137,13 @@ pub struct Job<S: State> {
 }
 
 impl<T: State> Job<T> {
-  pub fn map_state<R: State>(&self, f: impl FnOnce(&T) -> R) -> Job<R> {
-    let mut job = self.clone();
-    job.state = f(&job.state);
-    job
+  pub fn map_state<R: State>(&self, f: impl FnOnce(T) -> R) -> Job<R> {
+    Job {
+      id: self.id.clone(),
+      state: f(self.state.clone()),
+      app: self.app.clone(),
+      command: self.command.clone(),
+    }
   }
 }
 
@@ -150,7 +153,8 @@ impl Job<StateInit> {
     let approved_by = &self.state.approved_by.clone();
     let hasnt_approved = |u: &User| approved_by.iter().all(|a| a != u);
     let mut users = self.app
-                        .iter_users()
+                        .users(&self.command.env_name)
+                        .into_iter()
                         .filter(hasnt_approved)
                         .collect::<Vec<_>>();
     users.dedup();

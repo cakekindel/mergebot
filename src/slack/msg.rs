@@ -15,7 +15,7 @@ pub struct Id {
 
 impl Id {
   /// Is this id equal to another channel+ts pair?
-  pub fn eq(&self, channel: impl AsRef<str>, ts: impl AsRef<str>) -> bool {
+  pub fn equals(&self, channel: impl AsRef<str>, ts: impl AsRef<str>) -> bool {
     self.channel == channel.as_ref() && self.ts == ts.as_ref()
   }
 }
