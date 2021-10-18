@@ -34,11 +34,32 @@ lazy_static::lazy_static! {
 }
 
 /// Work to be picked up by worker thread
-struct Work {
-  job: Job,
+enum Work {
+  New(Job<job::StateApproved>),
+  Retry(Job<job::StateErrored>),
 }
 
-fn exec(job: &Job) {
+impl Work {
+  fn time_til(&self) -> Duration {
+    match self {
+      Self::Retry(job) => {
+        job.state.next_attempt.signed_duration_since(Utc::now()).to_std().unwrap_or_default()
+      },
+      Self::New(job) => {
+        Duration::default()
+      },
+    }
+  }
+
+  fn queue(self) -> () {
+    let q = &mut *lock_discard_poison(&QUEUE);
+    q.push(work);
+
+    WORK_QUEUED.1.notify_all();
+  }
+}
+
+fn exec<S: job::State>(job: &Job<S>) {
   // trust someone above us to make sure these are set before a job gets here
   let job_q_lock = lock_discard_poison(&JOB_QUEUE);
   let git_lock = lock_discard_poison(&GIT_CLIENT);
@@ -73,21 +94,12 @@ fn exec(job: &Job) {
                 .collect::<Vec<_>>();
 
   if errs.is_empty() {
-    job_q.set_state(&job.id, job::State::Done);
+    jobs.state_done(&job.id);
   } else {
-    let attempts = match &job.state {
-      | &job::State::Errored { attempts, .. } => attempts + 1,
-      | _ => 1,
-    };
+    jobs.state_errored(&job.id, errs);
 
-    let next_attempt = Utc::now() + chrono::Duration::seconds(5);
-
-    log::error!("job {}: executing encountered errors {:?}", job.id, errs);
-    let new_state = job::State::Errored { attempts,
-                                          next_attempt,
-                                          errs };
-
-    job_q.set_state(&job.id, new_state);
+    let work = Work::Errored(jobs.get_errored(&job.id).unwrap());
+    work.queue();
   }
 }
 
@@ -96,19 +108,9 @@ fn exec(job: &Job) {
 pub struct Executor;
 
 impl super::Executor for Executor {
-  fn schedule_exec(&self, job: &Job) -> super::Result<()> {
-    match &job.state {
-      | &job::State::Approved { .. } => (),
-      | s => return Err(super::Error::InvalidJobState(s.clone())),
-    };
-
-    let work = Work { job: job.clone() };
-    let q = &mut *lock_discard_poison(&QUEUE);
-    q.push(work);
-
-    WORK_QUEUED.1.notify_all();
-
-    Ok(())
+  fn schedule_exec(&self, job: &Job<job::StateApproved>) {
+    let work = Work::New(job.clone());
+    work.queue();
   }
 }
 
@@ -117,17 +119,7 @@ fn get_work() -> Option<(Work, Duration)> {
   let mut q: MutexGuard<'_, Vec<Work>> = lock_discard_poison(&QUEUE);
   let mut work = (*q).iter()
                      .enumerate()
-                     .filter_map(|(ix, w)| match w.job.state {
-                       | job::State::WorkQueued => Some((ix, Default::default())),
-                       | job::State::Errored { next_attempt, .. } => {
-                         let dur: chrono::Duration = next_attempt.signed_duration_since(Utc::now());
-                         Some((ix, dur.to_std().unwrap_or_default()))
-                       },
-                       | _ => {
-                         log::error!("job of state {:?} should not be in work queue", w.job.state);
-                         None
-                       },
-                     })
+                     .map(|(ix, w)| (ix, w.time_til()))
                      .collect::<Vec<_>>();
 
   work.sort_by_key(|(_, dur)| *dur);
@@ -159,10 +151,7 @@ fn worker() {
       log::info!("Waiting for work to be queued");
       let lock = lock_discard_poison(&WORK_QUEUED.0);
 
-      let work_queued =
-        WORK_QUEUED.1
-                   .wait(lock)
-                   .expect("if a thread (this or main) panicked holding a lock, this code is unreachable.");
+      let work_queued = WORK_QUEUED.1.wait(lock).unwrap();
 
       drop(work_queued);
     }
