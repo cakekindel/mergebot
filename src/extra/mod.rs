@@ -1,2 +1,2 @@
 mod r#str;
-pub use r#str::*;
+pub use self::r#str::*;

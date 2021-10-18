@@ -58,7 +58,7 @@
 #![cfg_attr(not(test), deny(unsafe_code, missing_copy_implementations))]
 
 use std::{env,
-          sync::{Arc, Barrier}};
+          sync::{Arc, Mutex, Barrier}};
 
 use log as _;
 use serde_json as _;
@@ -102,7 +102,7 @@ pub struct State {
   /// notifies approvers
   pub job_messenger: Box<dyn job::Messenger>,
   /// Job queue
-  pub job_queue: Box<dyn job::Queue>,
+  pub jobs: Box<dyn job::Store>,
   /// Reader for deployable app configuration
   pub app_reader: Box<dyn deploy::app::Reader>,
   /// HTTP request client
@@ -127,15 +127,16 @@ lazy_static::lazy_static! {
     git::r#impl::init(env::var("GIT_WORKDIR").expect("GIT_WORKDIR required"));
 
     let git = git::r#impl::StaticClient;
-    let job_q = job::MemQueue;
 
-    job::exec::r#impl::init(Box::from(job_q), Box::from(git));
+    let jobs = Arc::new(Mutex::new(job::store::StoreData::new()));
+
+    job::exec::r#impl::init(Box::from(jobs), Box::from(git));
 
     State {
       api_key: env::var("API_KEY").expect("API_KEY required"),
       slack_signing_secret: env::var("SLACK_SIGNING_SECRET").expect("SLACK_SIGNING_SECRET required"),
       slack_api_token: slack_token,
-      job_queue: Box::from(job_q),
+      jobs: Box::from(jobs),
       app_reader: Box::from(deploy::app::JsonFile),
       reqwest_client: &CLIENT,
       slack_groups: Box::from(slack_api.clone()),
@@ -200,7 +201,7 @@ pub mod filters {
              reply::Reply};
 
   use super::*;
-  use StrExtra;
+  use extra::StrExtra;
 
   /// 401 Unauthorized rejection
   #[derive(Debug)]
@@ -285,10 +286,9 @@ pub mod filters {
       });
 
     if user.is_none() {
-      log::debug!("(job {}) user {} approved but isn't an approver: {:#?}",
+      log::debug!("(job {}) user {} approved but isn't an approver",
                   job.id,
-                  user_id,
-                  &need_approvers);
+                  user_id);
     }
 
     if let Some(user) = user {
@@ -324,7 +324,7 @@ pub mod filters {
           state.get_all_new()
                .into_iter()
                .find(|j| match j.state.msg_id {
-                 | Some(StateInit { msg_id, .. }) => j.app.team_id == team_id && msg_id.eq(&channel, &ts),
+                 | Some(job::StateInit { msg_id, .. }) => j.app.team_id == team_id && msg_id.eq(&channel, &ts),
                  | _ => false,
                })
                .and_then(|job| {

@@ -6,13 +6,14 @@ use chrono::Utc;
 use crate::{git, job, job::Job, mutex_extra::lock_discard_poison};
 
 /// Initialize executor worker thread
-pub fn init(job_q: Box<dyn job::Queue>, git: Box<dyn crate::git::Client>) {
+pub fn init(jobs: Box<dyn job::Store>, git: Box<dyn crate::git::Client>) {
   #[allow(unsafe_code)]
   // use a mut static for one-time initialization of the worker thread
   unsafe {
     WORKER = Some(std::thread::spawn(worker));
   }
-  *lock_discard_poison(&JOB_QUEUE) = Some(job_q);
+
+  *lock_discard_poison(&JOB_STORE) = Some(jobs);
   *lock_discard_poison(&GIT_CLIENT) = Some(git);
 }
 
@@ -21,7 +22,7 @@ static mut WORKER: Option<thread::JoinHandle<()>> = None;
 
 // Dependencies
 lazy_static::lazy_static! {
-  pub(super) static ref JOB_QUEUE: Mutex<Option<Box<dyn job::Queue>>> = Mutex::new(None);
+  pub(super) static ref JOB_STORE: Mutex<Option<Box<dyn job::Store>>> = Mutex::new(None);
   pub(super) static ref GIT_CLIENT: Mutex<Option<Box<dyn git::Client>>> = Mutex::new(None);
 }
 
@@ -53,7 +54,7 @@ impl Work {
 
   fn queue(self) -> () {
     let q = &mut *lock_discard_poison(&QUEUE);
-    q.push(work);
+    q.push(self);
 
     WORK_QUEUED.1.notify_all();
   }
@@ -61,10 +62,10 @@ impl Work {
 
 fn exec<S: job::State>(job: &Job<S>) {
   // trust someone above us to make sure these are set before a job gets here
-  let job_q_lock = lock_discard_poison(&JOB_QUEUE);
+  let jobs_lock = lock_discard_poison(&JOB_STORE);
   let git_lock = lock_discard_poison(&GIT_CLIENT);
 
-  let job_q = job_q_lock.as_ref().unwrap();
+  let jobs = jobs_lock.as_ref().unwrap();
   let git = git_lock.as_ref().unwrap();
 
   let errs = job.app

@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 pub use app::*;
 use serde::{Deserialize as De, Serialize as Ser};
 
-use crate::slack;
+use crate::{slack, job};
 
 /// Models for local configuration file `./deployables.json`
 pub mod app;
@@ -25,7 +25,7 @@ pub struct Command {
 #[derive(Debug)]
 pub enum Error {
   /// There's a pending deploy already
-  JobAlreadyQueued(crate::job::Job),
+  JobAlreadyQueued(job::Job<job::States>),
   /// Slash command sent was not deploy
   CommandNotDeploy,
   /// Error encountered trying to read `deployables.json`

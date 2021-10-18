@@ -1,6 +1,6 @@
 use serde::{Deserialize as De, Serialize as Ser};
 
-mod queue;
+// mod queue;
 // pub use queue::*;
 
 mod messaging;
@@ -16,18 +16,22 @@ use crate::{deploy::{App, Command, User},
             git,
             slack};
 
+pub use store::Store;
+
 /// Errors that a job can encounter trying to deploy
-#[derive(Clone, Ser, De)]
+#[derive(Debug, Clone, Ser, De)]
 pub enum Error {
   /// Issue managing app repos
   Git(git::Error),
 }
 
 /// Job ID
-#[derive(Clone, Ser, De)]
+#[derive(Debug, Hash, PartialOrd, PartialEq, Eq, Clone, Ser, De)]
 pub struct Id(String);
 
-impl Deref<String> for Id {
+impl std::ops::Deref for Id {
+  type Target = String;
+
   fn deref(&self) -> &String {
     &self.0
   }
@@ -39,17 +43,19 @@ pub trait Hook<S: State> {
 }
 
 /// State a job may be in
-pub trait State {}
+pub trait State {
+  fn to_states(self) -> States;
+}
 
-impl State for Any {}
 impl State for StateInit {fn to_states(self) -> States {States::Init(self)}}
 impl State for StateApproved {fn to_states(self) -> States {States::Approved(self)}}
 impl State for StateErrored {fn to_states(self) -> States {States::Errored(self)}}
 impl State for StatePoisoned {fn to_states(self) -> States {States::Poisoned(self)}}
 impl State for StateDone {fn to_states(self) -> States {States::Done(self)}}
+impl State for States {fn to_states(self) -> States {self}}
 
 /// Sum type over job states
-#[derive(Clone, Ser, De)]
+#[derive(Debug, Clone, Ser, De)]
 #[serde(tag = "type")]
 pub enum States {
   /// Init
@@ -70,7 +76,7 @@ pub enum States {
 }
 
 /// Job partially approved
-#[derive(Clone, Ser, De)]
+#[derive(Debug, Clone, Ser, De)]
 pub struct StateInit {
   /// ID of the slack notification for this deploy
   pub msg_id: Option<slack::msg::Id>,
@@ -80,14 +86,14 @@ pub struct StateInit {
 }
 
 /// Job has been fully approved
-#[derive(Clone, Ser, De)]
+#[derive(Debug, Clone, Ser, De)]
 pub struct StateApproved {
   /// Previous state of the job
   pub prev: StateInit,
 }
 
 /// Deploying this job failed. Will retry.
-#[derive(Clone, Ser, De)]
+#[derive(Debug, Clone, Ser, De)]
 pub struct StateErrored {
   /// Previous state of the job
   pub prev: StateApproved,
@@ -100,16 +106,16 @@ pub struct StateErrored {
 }
 
 /// Failed to deploy more than POISON_THRESHOLD times
-#[derive(Clone, Ser, De)]
+#[derive(Debug, Clone, Ser, De)]
 pub struct StatePoisoned {
   /// Previous error state
   pub prev: StateErrored,
-};
+}
 
 /// Job has been executed. Includes the previous approval state,
 /// and if deploy failed but eventually succeeded,
 /// includes error state that triggered retry.
-#[derive(Clone, Ser, De)]
+#[derive(Debug, Clone, Ser, De)]
 pub enum StateDone {
   /// Succeeded right away
   Succeeded(StateApproved),
