@@ -1,8 +1,8 @@
-use event::Event;
 use nanoid as _;
 
 use super::*;
-use crate::{deploy, slack};
+
+use crate::{slack, deploy};
 
 mod r#impl;
 pub use r#impl::StoreData;
@@ -27,14 +27,15 @@ pub trait Store: 'static + Send + Sync + std::fmt::Debug {
   /// Get all jobs
   fn get_all(&self) -> Vec<Job<States>> {
     fn norm<S: State>(v: Vec<Job<S>>) -> impl Iterator<Item = Job<States>> {
-      v.into_iter().map(|j| j.map_state(|s| s.to_states()))
+      v.into_iter().map(|j| j.map_state(|s| s.into_states()))
     }
 
-    norm(self.get_all_new()).chain(norm(self.get_all_approved()))
-                            .chain(norm(self.get_all_errored()))
-                            .chain(norm(self.get_all_poisoned()))
-                            .chain(norm(self.get_all_done()))
-                            .collect::<Vec<_>>()
+    norm(self.get_all_new())
+        .chain(norm(self.get_all_approved()))
+        .chain(norm(self.get_all_errored()))
+        .chain(norm(self.get_all_poisoned()))
+        .chain(norm(self.get_all_done()))
+        .collect::<Vec<_>>()
   }
 
   /// Create a new job, returning the created job's id
@@ -64,7 +65,7 @@ pub trait Store: 'static + Send + Sync + std::fmt::Debug {
   /// Get a job of any state, converting its state from a concrete type to a polymorphic one.
   fn get(&self, job_id: &Id) -> Option<Job<States>> {
     fn norm<S: State>(j: Job<S>) -> Job<States> {
-      j.map_state(|s| s.to_states())
+      j.map_state(|s| s.into_states())
     }
 
     self.get_new(&job_id)

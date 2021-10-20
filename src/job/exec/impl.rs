@@ -46,8 +46,8 @@ impl Work {
     use job::State;
 
     match self {
-      | Self::New(j) => j.map_state(|s| s.to_states()),
-      | Self::Retry(j) => j.map_state(|s| s.to_states()),
+      | Self::New(j) => j.map_state(|s| s.into_states()),
+      | Self::Retry(j) => j.map_state(|s| s.into_states()),
     }
   }
 
@@ -58,11 +58,11 @@ impl Work {
                                .signed_duration_since(Utc::now())
                                .to_std()
                                .unwrap_or_default(),
-      | Self::New(job) => Duration::default(),
+      | Self::New(_) => Duration::default(),
     }
   }
 
-  fn queue(self) -> () {
+  fn queue(self) {
     let q = &mut *lock_discard_poison(&QUEUE);
     q.push(self);
 
@@ -109,7 +109,7 @@ fn exec<S: job::State>(job: &Job<S>) {
   } else {
     jobs.state_errored(&job.id, errs);
 
-    let work = Work::Retry(jobs.get_errored(&job.id).unwrap().clone());
+    let work = Work::Retry(jobs.get_errored(&job.id).unwrap());
     work.queue();
   }
 }

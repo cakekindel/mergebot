@@ -149,12 +149,12 @@ lazy_static::lazy_static! {
 type StateFilter = warp::filters::BoxedFilter<(&'static State,)>;
 
 fn init_job_state_hooks(s: &'static State) {
-  s.jobs.attach_listener(Box::from(job::hooks::on_approval(&s)));
+  s.jobs.attach_listener(job::hooks::on_approval(&s));
   s.jobs
-   .attach_listener(Box::from(job::hooks::on_full_approval_notify(&s)));
+   .attach_listener(job::hooks::on_full_approval_notify(&s));
   s.jobs
-   .attach_listener(Box::from(job::hooks::on_full_approval_deploy(&s)));
-  s.jobs.attach_listener(Box::from(job::hooks::on_failure_poison(&s)));
+   .attach_listener(job::hooks::on_full_approval_deploy(&s));
+  s.jobs.attach_listener(job::hooks::on_failure_poison(&s));
 }
 
 fn init_logger() {
@@ -297,7 +297,7 @@ pub mod filters {
     }
 
     if let Some(user) = user {
-      state.jobs.approved(&job.id, user.clone());
+      state.jobs.approved(&job.id, user);
     }
   }
 
@@ -397,7 +397,7 @@ pub mod filters {
                        Err(deploy::Error::JobAlreadyQueued(job))
                      } else {
                        Ok(mergebot.jobs.create(app, cmd))
-                         .map(|id| mergebot.jobs.get_new(&id).unwrap().clone())
+                         .map(|id| mergebot.jobs.get_new(&id).unwrap())
                      }
                    }) // [5]
                    .and_then(|job| {

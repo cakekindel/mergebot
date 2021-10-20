@@ -26,6 +26,12 @@ pub enum Error {
 #[derive(Debug, Hash, PartialOrd, PartialEq, Eq, Clone, Ser, De)]
 pub struct Id(String);
 
+impl Default for Id {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl Id {
   pub fn new() -> Self {
     Self(nanoid::nanoid!())
@@ -42,36 +48,36 @@ impl std::ops::Deref for Id {
 
 /// State a job may be in
 pub trait State: std::fmt::Debug + Clone {
-  fn to_states(self) -> States;
+  fn into_states(self) -> States;
 }
 
 impl State for StateInit {
-  fn to_states(self) -> States {
+  fn into_states(self) -> States {
     States::Init(self)
   }
 }
 impl State for StateApproved {
-  fn to_states(self) -> States {
+  fn into_states(self) -> States {
     States::Approved(self)
   }
 }
 impl State for StateErrored {
-  fn to_states(self) -> States {
+  fn into_states(self) -> States {
     States::Errored(self)
   }
 }
 impl State for StatePoisoned {
-  fn to_states(self) -> States {
+  fn into_states(self) -> States {
     States::Poisoned(self)
   }
 }
 impl State for StateDone {
-  fn to_states(self) -> States {
+  fn into_states(self) -> States {
     States::Done(self)
   }
 }
 impl State for States {
-  fn to_states(self) -> States {
+  fn into_states(self) -> States {
     self
   }
 }
@@ -187,7 +193,7 @@ impl Job<StateErrored> {
   /// Recursively flatten `prev_attempt`, yielding a flat list of attempts
   pub fn flatten_errors(&self) -> Vec<StateErrored> {
     fn go(err: &Option<Box<StateErrored>>, mut errs: Vec<StateErrored>) -> Vec<StateErrored> {
-      if let &Some(ref err) = err {
+      if let Some(ref err) = *err {
         errs.push(err.as_ref().clone());
         go(&err.prev_attempt, errs)
       } else {

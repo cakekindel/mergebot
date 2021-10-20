@@ -21,6 +21,12 @@ pub struct StoreData {
   pub done: HashMap<Id, Job<StateDone>>,
 }
 
+impl Default for StoreData {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl StoreData {
   pub fn new() -> Self {
     Self { created: HashMap::new(),
@@ -48,7 +54,7 @@ impl<T> Open<T> for Mutex<T> {
 }
 
 trait EmitEvent {
-  fn emit(&self, lock: MutexGuard<'_, StoreData>, ev: Event) -> ();
+  fn emit(&self, lock: MutexGuard<'_, StoreData>, ev: Event);
 }
 
 impl EmitEvent for Arc<Mutex<StoreData>> {
@@ -57,7 +63,7 @@ impl EmitEvent for Arc<Mutex<StoreData>> {
 
     LISTENERS.open()
              .iter()
-             .for_each(|f| f(Box::from(self as &dyn Store), ev));
+             .for_each(|f| f(self as &dyn Store, ev));
   }
 }
 
@@ -82,7 +88,7 @@ impl super::Store for Arc<Mutex<StoreData>> {
     store.created.insert(job.id.clone(), job.clone());
     self.emit(store, Event::Created(&job));
 
-    job.id.clone()
+    job.id
   }
 
   /// Mark a job as approved by a user
