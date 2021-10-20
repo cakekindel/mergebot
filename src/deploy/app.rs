@@ -106,6 +106,18 @@ pub struct App {
   pub repos: Vec<Repo>,
 }
 
+impl App {
+  /// Get an iterator yielding clones of all users (approvers or not) for the application.
+  /// Will likely contain duplicates.
+  pub fn users(&self, env_name: &str) -> Vec<User> {
+    self.repos
+        .iter()
+        .flat_map(|r| r.environments.iter().filter(|env| env.name_eq(env_name)))
+        .flat_map(|env| env.users.clone())
+        .collect::<Vec<_>>()
+  }
+}
+
 /// Errors encounterable while trying to read `deployables.json`
 #[derive(Debug)]
 pub enum ReadError {
@@ -120,6 +132,35 @@ pub enum ReadError {
 pub trait Reader: 'static + Sync + Send + std::fmt::Debug {
   /// Read the deployables from some source
   fn read(&self) -> Result<Vec<App>, ReadError>;
+
+  /// Find app matching a deploy command
+  fn get_matching_cmd(&self, cmd: &super::Command) -> Result<App, super::Error> {
+    use super::{Error, Error::*};
+    use crate::{extra::StrExtra, result_extra::ResultExtra};
+
+    let loose_eq = |a: &str, b: &str| a.trim().to_lowercase() == b.trim().to_lowercase();
+
+    let env_matches = |env: &Mergeable| -> bool {
+      env.name.loose_eq(&cmd.env_name) && env.users.iter().any(|u| u.user_id() == Some(&cmd.user_id))
+    };
+
+    let matches_env_and_user = |app: &App| -> bool { app.repos.iter().any(|r| r.environments.iter().any(env_matches)) };
+
+    let matches_app = |app: &App| -> bool { app.team_id == cmd.team_id && loose_eq(&app.name, &cmd.app_name) };
+
+    let matches_team = |apps: Vec<App>| -> Result<App, Error> {
+      apps.into_iter()
+          .find(matches_app)
+          .ok_or_else(|| AppNotFound(cmd.app_name.clone()))
+    };
+
+    self.read()
+        .map_err(ReadingApps)
+        .and_then(matches_team)
+        .filter(matches_env_and_user, |_| {
+          EnvNotFound(cmd.app_name.clone(), cmd.env_name.clone())
+        })
+  }
 }
 
 /// ZST that implements Reader for `deployables.json`

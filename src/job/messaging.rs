@@ -4,10 +4,10 @@ use crate::{deploy, job, slack};
 /// A messenger is able to notify the approvers of an app of a deployment
 pub trait Messenger: 'static + Sync + Send + std::fmt::Debug {
   /// Notify approvers of an app for deployment
-  fn send_job_created(&self, job: &Job) -> slack::Result<slack::msg::Id>;
+  fn send_job_created(&self, job: &Job<job::StateInit>) -> slack::Result<slack::msg::Id>;
 
   /// Notify that the job has been executed
-  fn send_job_approved(&self, job: &Job) -> slack::Result<slack::msg::Id>;
+  fn send_job_approved(&self, job: &Job<job::StateApproved>) -> slack::Result<slack::msg::Id>;
 }
 
 fn fmt_approvers(approvers: &[&deploy::app::User]) -> String {
@@ -30,7 +30,7 @@ fn fmt_approvers(approvers: &[&deploy::app::User]) -> String {
 }
 
 impl<T: slack::msg::Messages> Messenger for T {
-  fn send_job_created(&self, job: &Job) -> slack::Result<slack::msg::Id> {
+  fn send_job_created(&self, job: &Job<job::StateInit>) -> slack::Result<slack::msg::Id> {
     let users = job.app
                    .repos
                    .iter()
@@ -60,11 +60,9 @@ impl<T: slack::msg::Messages> Messenger for T {
   }
 
   /// Notify that the job has been executed
-  fn send_job_approved(&self, job: &Job) -> slack::Result<slack::msg::Id> {
-    let id = match job.state {
-      | job::State::Approved { ref msg_id, .. } => Ok(msg_id),
-      | _ => Err(slack::Error::Other(String::from("job was not approved"))), // TODO: wrap error
-    }?;
+  fn send_job_approved(&self, job: &Job<job::StateApproved>) -> slack::Result<slack::msg::Id> {
+    let id_missing = slack::Error::Other(String::from("no message to respond to"));
+    let id = job.state.prev.msg_id.as_ref().ok_or(id_missing)?;
 
     let blocks: Vec<slack_blocks::Block> = {
       use slack_blocks::blox::*;

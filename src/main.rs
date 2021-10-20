@@ -52,13 +52,11 @@
 //! [conventional commits]: https://www.conventionalcommits.org/en/v1.0.0/
 
 #![cfg_attr(not(test),
-            forbid(missing_debug_implementations,
-                   unreachable_pub,
-                   unused_crate_dependencies))]
+            forbid(missing_debug_implementations, unreachable_pub, unused_crate_dependencies))]
 #![cfg_attr(not(test), deny(unsafe_code, missing_copy_implementations))]
 
 use std::{env,
-          sync::{Arc, Barrier}};
+          sync::{Arc, Barrier, Mutex}};
 
 use log as _;
 use serde_json as _;
@@ -69,6 +67,9 @@ pub mod result_extra;
 
 /// Helper mutex functions
 pub mod mutex_extra;
+
+/// Helper functions
+pub mod extra;
 
 /// Slack models
 pub mod slack;
@@ -99,7 +100,7 @@ pub struct State {
   /// notifies approvers
   pub job_messenger: Box<dyn job::Messenger>,
   /// Job queue
-  pub job_queue: Box<dyn job::Queue>,
+  pub jobs: Box<dyn job::Store>,
   /// Reader for deployable app configuration
   pub app_reader: Box<dyn deploy::app::Reader>,
   /// HTTP request client
@@ -124,15 +125,16 @@ lazy_static::lazy_static! {
     git::r#impl::init(env::var("GIT_WORKDIR").expect("GIT_WORKDIR required"));
 
     let git = git::r#impl::StaticClient;
-    let job_q = job::MemQueue;
 
-    job::exec::r#impl::init(Box::from(job_q), Box::from(git));
+    let jobs = Arc::new(Mutex::new(job::store::StoreData::new()));
+
+    job::exec::r#impl::init(Box::from(jobs.clone()), Box::from(git));
 
     State {
       api_key: env::var("API_KEY").expect("API_KEY required"),
       slack_signing_secret: env::var("SLACK_SIGNING_SECRET").expect("SLACK_SIGNING_SECRET required"),
       slack_api_token: slack_token,
-      job_queue: Box::from(job_q),
+      jobs: Box::from(jobs),
       app_reader: Box::from(deploy::app::JsonFile),
       reqwest_client: &CLIENT,
       slack_groups: Box::from(slack_api.clone()),
@@ -145,6 +147,15 @@ lazy_static::lazy_static! {
 }
 
 type StateFilter = warp::filters::BoxedFilter<(&'static State,)>;
+
+fn init_job_state_hooks(s: &'static State) {
+  s.jobs.attach_listener(job::hooks::on_approval(&s));
+  s.jobs
+   .attach_listener(job::hooks::on_full_approval_notify(&s));
+  s.jobs
+   .attach_listener(job::hooks::on_full_approval_deploy(&s));
+  s.jobs.attach_listener(job::hooks::on_failure_poison(&s));
+}
 
 fn init_logger() {
   if env::var_os("RUST_LOG").is_none() {
@@ -183,8 +194,9 @@ pub async fn main() {
 
   let api = filters::api(create_state_filter).with(warp::log("mergebot"));
 
-  let _ = &STATE; // make sure init work is done
-  Arc::clone(&APP_INIT).wait();
+  init_job_state_hooks(&STATE);
+
+  Arc::clone(&APP_INIT).wait(); // Wait until worker thread is ready
 
   warp::serve(api).run(([127, 0, 0, 1], 3030)).await;
 }
@@ -193,6 +205,7 @@ pub async fn main() {
 pub mod filters {
   use std::convert::TryFrom;
 
+  use extra::StrExtra;
   use warp::{reject::{Reject, Rejection},
              reply::Reply};
 
@@ -242,7 +255,7 @@ pub mod filters {
     state().and(warp::path!("api" / "v1" / "jobs"))
            .and(warp::get())
            .and(api_key(state()))
-           .map(|state: &'static State| warp::reply::json(&state.job_queue.cloned()))
+           .map(|state: &'static State| warp::reply::json(&state.jobs.get_all()))
   }
 
   /// <https://api.slack.com/authentication/verifying-requests-from-slack>
@@ -265,61 +278,26 @@ pub mod filters {
                                                 .map(|name| format!("hello, {}!", name))
   }
 
-  fn handle_approval(state: &'static State, job: &job::Job, user_id: &str) {
-    let need_approvers = job.outstanding_approvers();
-    let outstanding_approver =
-      need_approvers.iter().find(|u| match u {
-                             | deploy::User::User { user_id: u_id, .. } => u_id == user_id,
-                             | deploy::User::Group { group_id, .. } => state.slack_groups
-                                                                            .expand(group_id)
-                                                                            .map_err(|e| log::error!("{:#?}", e))
-                                                                            .unwrap_or_default()
-                                                                            .contains(&user_id.to_string()),
-                           });
-    if outstanding_approver == None {
-      log::debug!("(job {}) user {} approved but isn't an approver: {:#?}",
-                  job.id,
-                  user_id,
-                  &need_approvers);
+  fn handle_approval(state: &'static State, job: &job::Job<job::StateInit>, user_id: &str) {
+    use deploy::User;
+
+    let user = job.outstanding_approvers().into_iter().find(|u| match u {
+                                                        | User::User { user_id: u_id, .. } => u_id == user_id,
+                                                        | User::Group { group_id, .. } => {
+                                                          state.slack_groups
+                                                               .expand(group_id)
+                                                               .map_err(|e| log::error!("{:#?}", e))
+                                                               .unwrap_or_default()
+                                                               .contains(&user_id.to_string())
+                                                        },
+                                                      });
+
+    if user.is_none() {
+      log::debug!("(job {:?}) user {} approved but isn't an approver", job.id, user_id);
     }
 
-    if let Some(user) = outstanding_approver {
-      log::info!("(job {}) approved by {:#?}", job.id, user);
-
-      let mut new_state = state.job_queue.lookup(&job.id).expect("job wasn't removed").state;
-
-      if let job::State::Notified { ref mut approved_by, .. } = new_state {
-        approved_by.push(user.clone());
-      }
-
-      let job = state.job_queue
-                     .set_state(&job.id, new_state.clone())
-                     .expect("job wasn't removed from queue");
-      let need_approvers = job.outstanding_approvers();
-
-      if need_approvers.is_empty() {
-        log::info!("(job {}) fully approved", job.id);
-
-        let (approved_by, msg_id) = match new_state {
-          | job::State::Notified { approved_by: a,
-                                   msg_id: m, } => (a, m),
-          | _ => unreachable!(),
-        };
-
-        let job = state.job_queue
-                       .set_state(&job.id, job::State::Approved { msg_id, approved_by })
-                       .expect("job wasn't removed from queue");
-
-        if let Err(e) = state.job_messenger.send_job_approved(&job) {
-          log::error!("{:#?}", e);
-        }
-
-        if let Err(e) = state.job_executor.schedule_exec(&job) {
-          log::error!("{:#?}", e);
-        }
-      } else {
-        log::info!("(job {}) still need approvers: {:?}", job.id, need_approvers);
-      }
+    if let Some(user) = user {
+      state.jobs.approved(&job.id, user);
     }
   }
 
@@ -347,21 +325,17 @@ pub mod filters {
                          ReactionAdded { user,
                                          reaction,
                                          item: Item::Message { channel, ts }, }, } => {
-        let matched_job =
-          state.job_queue
-               .cloned()
-               .into_iter()
-               .find(|j| match &j.state {
-                 | job::State::Notified { msg_id, .. } => j.app.team_id == team_id && msg_id.eq(&channel, &ts),
-                 | _ => false,
-               })
-               .and_then(|job| {
-                 log::info!("(job {}) user {} reacted {}", job.id, user, reaction);
-                 match reaction.as_str() {
-                   | "+1" => Some(job),
-                   | _ => None,
-                 }
-               });
+        let matched_job = state.jobs
+                               .get_all_new()
+                               .into_iter()
+                               .find(|j| match j.state.msg_id.as_ref() {
+                                 | Some(msg_id) => j.app.team_id == team_id && msg_id.equals(&channel, &ts),
+                                 | _ => false,
+                               })
+                               .and_then(|job| match reaction.as_str() {
+                                 | "+1" => Some(job),
+                                 | _ => None,
+                               });
 
         if let Some(j) = matched_job {
           handle_approval(state, &j, &user)
@@ -409,27 +383,28 @@ pub mod filters {
              })
              .and_then(|slash| {
                deploy::Command::try_from(slash) // [1]
-                   .and_then(|cmd| cmd.find_app(&mergebot.app_reader).map(|app| (cmd, app))) // [2], [3], [4]
+                   .and_then(|cmd| mergebot.app_reader.get_matching_cmd(&cmd).map(|app| (cmd, app))) // [2], [3], [4]
                    .and_then(|(cmd, app)| {
-                     let loose_eq = |a: &str, b: &str| a.trim().to_lowercase() == b.trim().to_lowercase();
                      let existing = mergebot
-                       .job_queue
-                           .cloned()
-                           .into_iter()
-                           .find(
-                               |j| j.app == app && loose_eq(&j.command.env_name, &cmd.env_name)
-                           );
+                       .jobs
+                       .get_all()
+                       .into_iter()
+                       .find(
+                           |j| j.app == app && j.command.env_name.loose_eq(&cmd.env_name)
+                       );
 
                      if let Some(job) = existing {
                        Err(deploy::Error::JobAlreadyQueued(job))
                      } else {
-                       Ok(mergebot.job_queue.queue(app, cmd))
+                       Ok(mergebot.jobs.create(app, cmd))
+                         .map(|id| mergebot.jobs.get_new(&id).unwrap())
                      }
                    }) // [5]
                    .and_then(|job| {
-                     mergebot.job_messenger.send_job_created(&job)
+                     mergebot.job_messenger
+                         .send_job_created(&job)
                          .map_err(deploy::Error::SlackApi)
-                         .map(|msg_id| mergebot.job_queue.set_state(&job.id, job::State::Notified{msg_id, approved_by: vec![]}))
+                         .map(|msg_id| mergebot.jobs.notified(&job.id, msg_id))
                    }) // [6]
                    .map(|job| warp::reply::with_status(format!("```{:#?}```", job), http::StatusCode::OK))
                    .map_err(|_| warp::reply::with_status("Uh oh :confused: I wasn't able to do that. <https://github.com/cakekindel/mergebot/issues|Please file an issue>!".to_string(), http::StatusCode::OK))
