@@ -46,26 +46,26 @@ pub trait Store: 'static + Send + Sync + std::fmt::Debug {
   fn notified(&self, job_id: &Id, msg_id: slack::msg::Id) -> Option<Id>;
 
   /// Mark a job as approved by a user
-  fn approved(&self, job_id: &Id, user: &deploy::User) -> Option<Id>;
+  fn approved(&self, job_id: &Id, user: deploy::User) -> Option<Id>;
 
   /// Get a job of state Init
-  fn get_new(&self, job_id: &Id) -> Option<&Job<StateInit>>;
+  fn get_new(&self, job_id: &Id) -> Option<Job<StateInit>>;
 
   /// Get a job of state Approved
-  fn get_approved(&self, job_id: &Id) -> Option<&Job<StateApproved>>;
+  fn get_approved(&self, job_id: &Id) -> Option<Job<StateApproved>>;
 
   /// Get a job of state Poisoned
-  fn get_poisoned(&self, job_id: &Id) -> Option<&Job<StatePoisoned>>;
+  fn get_poisoned(&self, job_id: &Id) -> Option<Job<StatePoisoned>>;
 
   /// Get a job of state Errored
-  fn get_errored(&self, job_id: &Id) -> Option<&Job<StateErrored>>;
+  fn get_errored(&self, job_id: &Id) -> Option<Job<StateErrored>>;
 
   /// Get a job of state Done
-  fn get_done(&self, job_id: &Id) -> Option<&Job<StateDone>>;
+  fn get_done(&self, job_id: &Id) -> Option<Job<StateDone>>;
 
   /// Get a job of any state, converting its state from a concrete type to a polymorphic one.
   fn get(&self, job_id: &Id) -> Option<Job<States>> {
-    fn norm<S: State>(j: &Job<S>) -> Job<States> {
+    fn norm<S: State>(j: Job<S>) -> Job<States> {
       j.map_state(|s| s.to_states())
     }
 
@@ -78,7 +78,7 @@ pub trait Store: 'static + Send + Sync + std::fmt::Debug {
   }
 
   /// Mark a job as fully approved
-  fn state_approved(&self, job_id: &Id) -> Option<Id>;
+  fn fully_approved(&self, job_id: &Id) -> Option<Id>;
 
   /// Mark a job as errored
   fn state_errored(&self, job_id: &Id, errs: Vec<Error>) -> Option<Id>;
@@ -90,5 +90,5 @@ pub trait Store: 'static + Send + Sync + std::fmt::Debug {
   fn state_done(&self, job_id: &Id) -> Option<Id>;
 
   /// Listen for events, allows mutating the store while processing with the provided &Self parameter
-  fn attach_listener(&self, f: fn(Box<dyn Store>, Event) -> ());
+  fn attach_listener(&self, f: event::Listener);
 }

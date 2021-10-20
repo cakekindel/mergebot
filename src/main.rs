@@ -150,6 +150,12 @@ lazy_static::lazy_static! {
 
 type StateFilter = warp::filters::BoxedFilter<(&'static State,)>;
 
+fn init_job_state_hooks(s: &'static State) {
+  s.jobs.attach_listener(Box::from(job::approval::on_approval(&s)));
+  s.jobs.attach_listener(Box::from(job::approval::on_full_approval_notify(&s)));
+  s.jobs.attach_listener(Box::from(job::approval::on_full_approval_deploy(&s)));
+}
+
 fn init_logger() {
   if env::var_os("RUST_LOG").is_none() {
     env::set_var("RUST_LOG", "mergebot=debug");
@@ -187,8 +193,9 @@ pub async fn main() {
 
   let api = filters::api(create_state_filter).with(warp::log("mergebot"));
 
-  let _ = &STATE; // make sure init work is done
-  Arc::clone(&APP_INIT).wait();
+  init_job_state_hooks(&STATE);
+
+  Arc::clone(&APP_INIT).wait(); // Wait until worker thread is ready
 
   warp::serve(api).run(([127, 0, 0, 1], 3030)).await;
 }
@@ -293,7 +300,7 @@ pub mod filters {
     }
 
     if let Some(user) = user {
-      state.jobs.approved(&job.id, &user);
+      state.jobs.approved(&job.id, user.clone());
     }
   }
 

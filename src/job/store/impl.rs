@@ -2,23 +2,23 @@ use serde::{Deserialize as De, Serialize as Ser};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use nanoid as _;
-
 use super::*;
-use event::Event;
+use event::{Event, Listener};
 
 use crate::{slack, deploy, mutex_extra::lock_discard_poison};
 
+lazy_static::lazy_static! {
+  static ref LISTENERS: Mutex<Vec<Listener>> = Mutex::new(Vec::new());
+}
+
 /// Job store data
-#[derive(Ser, De)]
+#[derive(Ser, De, Debug, Clone)]
 pub struct StoreData {
   pub created: HashMap<Id, Job<StateInit>>,
   pub approved: HashMap<Id, Job<StateApproved>>,
   pub errored: HashMap<Id, Job<StateErrored>>,
   pub poison: HashMap<Id, Job<StatePoisoned>>,
   pub done: HashMap<Id, Job<StateDone>>,
-  #[serde(skip)]
-  listeners: Vec<fn(Box<dyn Store>, Event)>,
 }
 
 impl StoreData {
@@ -29,21 +29,7 @@ impl StoreData {
       errored: HashMap::new(),
       poison: HashMap::new(),
       done: HashMap::new(),
-      listeners: Vec::new(),
     }
-  }
-}
-
-impl std::fmt::Debug for StoreData {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("StoreData")
-     .field("created", &self.created)
-     .field("approved", &self.approved)
-     .field("errored", &self.errored)
-     .field("poison", &self.poison)
-     .field("done", &self.done)
-     .field("listeners", &self.listeners.iter().map(|_| "Fn(Store, Event)").collect::<Vec<_>>())
-     .finish()
   }
 }
 
@@ -57,44 +43,164 @@ impl<T> Open<T> for Arc<Mutex<T>> {
   }
 }
 
+impl<T> Open<T> for Mutex<T> {
+  fn open(&self) -> MutexGuard<'_, T> {
+    lock_discard_poison(&self)
+  }
+}
+
+trait EmitEvent {
+  fn emit(&self, lock: MutexGuard<'_, StoreData>, ev: Event) -> ();
+}
+
+impl EmitEvent for Arc<Mutex<StoreData>> {
+  fn emit(&self, lock: MutexGuard<'_, StoreData>, ev: Event) {
+    drop(lock);
+
+    LISTENERS
+      .open()
+      .iter()
+      .for_each(|f| f(Box::from(self as &dyn Store), ev));
+  }
+}
+
 impl super::Store for Arc<Mutex<StoreData>> {
   /// Add a slack message id to a job in Init state
-  fn notified(&self, job_id: &Id, msg_id: slack::msg::Id) -> Option<Id> {todo!()}
+  fn notified(&self, job_id: &Id, msg_id: slack::msg::Id) -> Option<Id> {
+    self.open().created.get_mut(job_id).map(|j| {
+      j.state.msg_id = Some(msg_id);
+      j.id.clone()
+    })
+  }
 
   /// Create a new job, returning the created job's id
-  fn create(&self, app: deploy::App, command: deploy::Command) -> Id {todo!()}
+  fn create(&self, app: deploy::App, command: deploy::Command) -> Id {
+    let job = Job {
+      id: Id::new(),
+      state: StateInit {
+        approved_by: vec![],
+        msg_id: None,
+      },
+      command,
+      app,
+    };
+
+    let mut store = self.open();
+    store.created.insert(job.id.clone(), job.clone());
+    self.emit(store, Event::Created(&job));
+
+    job.id.clone()
+  }
 
   /// Mark a job as approved by a user
-  fn approved(&self, job_id: &Id, user: &deploy::User) -> Option<Id> {todo!()}
+  fn approved(&self, job_id: &Id, user: deploy::User) -> Option<Id> {
+    let mut state = self.open();
+
+    let job = state.created
+         .get_mut(job_id)
+         .map(|j| {
+             j.state.approved_by.push(user.clone());
+             j.clone()
+         });
+
+    if let Some(job) = job {
+      self.emit(state, Event::Approved(&job, &user));
+
+      Some(job.id)
+    } else {
+      None
+    }
+  }
 
   /// Get a job of state Init
-  fn get_new(&self, job_id: &Id) -> Option<&Job<StateInit>> {todo!()}
+  fn get_new(&self, job_id: &Id) -> Option<Job<StateInit>> {
+    self.open().created.get(job_id).cloned()
+  }
 
   /// Get a job of state Approved
-  fn get_approved(&self, job_id: &Id) -> Option<&Job<StateApproved>> {todo!()}
+  fn get_approved(&self, job_id: &Id) -> Option<Job<StateApproved>> {
+    self.open().approved.get(job_id).cloned()
+  }
 
   /// Get a job of state Poisoned
-  fn get_poisoned(&self, job_id: &Id) -> Option<&Job<StatePoisoned>> {todo!()}
+  fn get_poisoned(&self, job_id: &Id) -> Option<Job<StatePoisoned>> {
+    self.open().poison.get(job_id).cloned()
+  }
 
   /// Get a job of state Errored
-  fn get_errored(&self, job_id: &Id) -> Option<&Job<StateErrored>> {todo!()}
+  fn get_errored(&self, job_id: &Id) -> Option<Job<StateErrored>> {
+    self.open().errored.get(job_id).cloned()
+  }
 
   /// Get a job of state Done
-  fn get_done(&self, job_id: &Id) -> Option<&Job<StateDone>> {todo!()}
+  fn get_done(&self, job_id: &Id) -> Option<Job<StateDone>> {
+    self.open().done.get(job_id).cloned()
+  }
 
   /// Mark a job as fully approved
-  fn state_approved(&self, job_id: &Id) -> Option<Id> {todo!()}
+  fn fully_approved(&self, job_id: &Id) -> Option<Id> {
+    let mut state = self.open();
+
+    let job = state.created.remove(job_id).map(|j| j.map_state(|s| StateApproved {prev: s}));
+
+    if let Some(j) = job {
+      state.approved.insert(job_id.clone(), j.clone());
+      self.emit(state, Event::FullyApproved(&j));
+      Some(job_id.clone())
+    } else {
+      None
+    }
+  }
 
   /// Mark a job as errored
-  fn state_errored(&self, job_id: &Id, errs: Vec<Error>) -> Option<Id> {todo!()}
+  fn state_errored(&self, job_id: &Id, errs: Vec<Error>) -> Option<Id> {
+    use chrono::{Duration as Dur};
+
+    let mut store = self.open();
+    let next_attempt = Utc::now() + Dur::seconds(10);
+
+    let errored = store
+      .errored
+      .remove(job_id)
+      .map(|j| j.map_state(|e| StateErrored {
+                  prev: e.prev.clone(),
+                  prev_attempt: Some(Box::from(e)),
+                  next_attempt,
+                  errs: errs.clone(),
+                })
+      );
+
+    let approved = store.approved.remove(job_id).map(|j| j.map_state(|a| StateErrored {
+      prev: a,
+      prev_attempt: None,
+      next_attempt,
+      errs,
+    }));
+
+    if let Some(j) = errored.or(approved) {
+      store.errored.insert(job_id.clone(), j.clone());
+      self.emit(store, Event::Errored(&j));
+      Some(job_id.clone())
+    } else {
+      None
+    }
+  }
 
   /// Mark a job as poisoned
   fn state_poisoned(&self, job_id: &Id) -> Option<Id> {
     let mut store = self.open();
-    let prev = store
+    let job = store
                  .errored
                  .remove(job_id)
                  .map(|j| j.map_state(|prev| StatePoisoned {prev}));
+
+    if let Some(j) = job {
+      store.poison.insert(job_id.clone(), j.clone());
+      self.emit(store, Event::Poisoned(&j));
+      Some(job_id.clone())
+    } else {
+      None
+    }
   }
 
   /// Mark a job as done
@@ -107,7 +213,8 @@ impl super::Store for Arc<Mutex<StoreData>> {
     let succeeded = store.approved.remove(job_id).map(|j| j.map_state(StateDone::Succeeded));
 
     if let Some(job) = succeeded.or(retried) {
-      store.done.insert(job_id.clone(), job);
+      store.done.insert(job_id.clone(), job.clone());
+      self.emit(store, Event::Done(&job));
       Some(job_id.clone())
     } else {
       None
@@ -115,8 +222,8 @@ impl super::Store for Arc<Mutex<StoreData>> {
   }
 
   /// Listen for events, allows mutating the store while processing with the provided &Self parameter
-  fn attach_listener(&self, f: fn(Box<dyn Store>, Event) -> ()) {
-    self.open().listeners.push(f)
+  fn attach_listener(&self, f: Listener) {
+    LISTENERS.open().push(f)
   }
 
   /// Get fresh jobs

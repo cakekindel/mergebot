@@ -6,6 +6,7 @@ use serde::{Deserialize as De, Serialize as Ser};
 mod messaging;
 pub use messaging::*;
 
+pub mod approval;
 pub mod store;
 pub mod event;
 pub mod exec;
@@ -28,6 +29,12 @@ pub enum Error {
 /// Job ID
 #[derive(Debug, Hash, PartialOrd, PartialEq, Eq, Clone, Ser, De)]
 pub struct Id(String);
+
+impl Id {
+  pub fn new() -> Self {
+    Self(nanoid::nanoid!())
+  }
+}
 
 impl std::ops::Deref for Id {
   type Target = String;
@@ -98,7 +105,7 @@ pub struct StateErrored {
   /// Previous state of the job
   pub prev: StateApproved,
   /// Previous errored attempts
-  pub attempts: Vec<StateErrored>,
+  pub prev_attempt: Option<Box<StateErrored>>,
   /// Next scheduled attempt
   pub next_attempt: DateTime<Utc>,
   /// Errors encountered during last attempt

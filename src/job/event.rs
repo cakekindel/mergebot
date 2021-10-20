@@ -1,13 +1,15 @@
 use super::*;
-use crate::deploy;
+
+/// A closure that does stuff when an event is fired
+pub type Listener = Box<dyn for<'a> Fn(Box<&'a dyn Store>, Event<'a>) + Send + Sync>;
 
 /// Events available to listen for
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Event<'a> {
   /// Job created
   Created(&'a Job<StateInit>),
   /// Job approved
-  Approved(&'a Job<StateInit>),
+  Approved(&'a Job<StateInit>, &'a crate::deploy::User),
   /// Job fully approved
   FullyApproved(&'a Job<StateApproved>),
   /// Job errored
