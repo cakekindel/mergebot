@@ -1,7 +1,7 @@
 use super::*;
 
 /// A closure that does stuff when an event is fired
-pub type Listener = Box<dyn for<'a> Fn(&'a dyn Store, Event<'a>) + Send + Sync>;
+pub type Listener = Box<dyn for<'a> Fn(Event<'a>) + Send + Sync>;
 
 /// Events available to listen for
 #[derive(Copy, Clone, Debug)]

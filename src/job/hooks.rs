@@ -1,33 +1,34 @@
-use super::{event::*, *};
+use super::event::*;
 
 /// On approval, check if fully approved, change state, and log
-pub fn on_approval(_: &'static crate::State) -> Listener {
-  fn cloj<'a>(jobs: &'a dyn Store, ev: Event<'a>) {
-    match ev {
-      | Event::Approved(job, user) => {
+pub fn on_approval(state: &'static crate::State) -> Listener {
+  let cloj = move |ev: Event| {
+    if let Event::Approved(job, user) = ev {
         log::info!("job {:?} approved by {:#?}", job.id, user);
 
         let need_approvers = job.outstanding_approvers();
         if need_approvers.is_empty() {
           log::info!("job {:?} fully approved", job.id);
 
-          if let None = jobs.fully_approved(&job.id) {
-            log::error!("job {:?} was not marked approved", job.id);
-          }
+          let id = job.id.clone();
+
+          // nested event emissions cause deadlock
+          // so we essentially queue the op in another thread
+          std::thread::spawn(move || {
+            state.jobs.fully_approved(&id);
+          });
         } else {
           log::info!("job {:?} still needs approvers: {:?}", job.id, need_approvers);
         }
-      },
-      | _ => (),
-    }
-  }
+      }
+    };
 
   Box::from(cloj)
 }
 
 /// Send message on full approval
 pub fn on_full_approval_notify(state: &'static crate::State) -> Listener {
-  let f = move |_: &dyn Store, ev: Event| match ev {
+  let f = move |ev: Event| match ev {
     | Event::FullyApproved(job) => {
       log::info!("job {:?}: sending approval message...", job.id);
 
@@ -45,7 +46,7 @@ pub fn on_full_approval_notify(state: &'static crate::State) -> Listener {
 
 /// Deploy on full approval
 pub fn on_full_approval_deploy(state: &'static crate::State) -> Listener {
-  let f = move |_: &dyn Store, ev: Event| match ev {
+  let f = move |ev: Event| match ev {
     | Event::FullyApproved(job) => {
       log::info!("job {:?}: deploying", job.id);
       state.job_executor.schedule_exec(&job);
@@ -57,13 +58,17 @@ pub fn on_full_approval_deploy(state: &'static crate::State) -> Listener {
 }
 
 /// If failed beyond threshold, mark as poisoned
-pub fn on_failure_poison(_: &'static crate::State) -> Listener {
-  let f = move |jobs: &dyn Store, ev: Event| match ev {
+pub fn on_failure_poison(state: &'static crate::State) -> Listener {
+  let f = move |ev: Event| match ev {
     | Event::Errored(j) => {
       let errs = j.flatten_errors();
       if errs.len() > 4 {
         log::error!("job {:?} poisoned!!1", j.id);
-        jobs.state_poisoned(&j.id);
+        let id = j.id.clone();
+
+        std::thread::spawn(move || {
+          state.jobs.state_poisoned(&id);
+        });
       }
     },
     | _ => (),
