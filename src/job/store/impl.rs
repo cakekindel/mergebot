@@ -45,10 +45,13 @@ impl<T> Open<T> for Arc<Mutex<T>> {
   fn open(&self) -> MutexGuard<'_, T> {
     use std::sync::TryLockError::*;
     match self.try_lock() {
-      Ok(lock) => lock,
+      Ok(lock) => {
+        log::info!("lock acquired");
+        lock
+      },
       Err(Poisoned(e)) => e.into_inner(),
       Err(WouldBlock) => {
-        log::info!("lock already acquired; blocking...");
+        log::info!("lock held; blocking...");
         lock_discard_poison(&*self)
       },
     }
@@ -68,6 +71,7 @@ trait EmitEvent {
 impl EmitEvent for Arc<Mutex<StoreData>> {
   fn emit(&self, lock: MutexGuard<'_, StoreData>, ev: Event) {
     drop(lock);
+    log::info!("lock dropped");
 
     LISTENERS.open()
              .iter()
