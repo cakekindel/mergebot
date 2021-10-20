@@ -10,6 +10,7 @@ pub fn on_approval(_: &'static crate::State) -> Listener {
         let need_approvers = job.outstanding_approvers();
         if need_approvers.is_empty() {
           log::info!("(job {:?}) fully approved", job.id);
+
           jobs.fully_approved(&job.id);
         } else {
           log::info!("(job {:?}) still needs approvers: {:?}", job.id, need_approvers);
@@ -26,9 +27,13 @@ pub fn on_approval(_: &'static crate::State) -> Listener {
 pub fn on_full_approval_notify(state: &'static crate::State) -> Listener {
   let f = move |_: &dyn Store, ev: Event| match ev {
     | Event::FullyApproved(job) => {
+      log::info!("job {:?}: sending approval message...", job.id);
+
       if let Err(e) = state.job_messenger.send_job_approved(&job) {
         log::error!("{:#?}", e);
       }
+
+      log::info!("job {:?}: approval message sent", job.id);
     },
     | _ => (),
   };
@@ -40,6 +45,7 @@ pub fn on_full_approval_notify(state: &'static crate::State) -> Listener {
 pub fn on_full_approval_deploy(state: &'static crate::State) -> Listener {
   let f = move |_: &dyn Store, ev: Event| match ev {
     | Event::FullyApproved(job) => {
+      log::info!("job {:?}: deploying", job.id);
       state.job_executor.schedule_exec(&job);
     },
     | _ => (),
