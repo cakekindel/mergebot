@@ -5,15 +5,17 @@ pub fn on_approval(_: &'static crate::State) -> Listener {
   fn cloj<'a>(jobs: &'a dyn Store, ev: Event<'a>) {
     match ev {
       | Event::Approved(job, user) => {
-        log::info!("(job {:?}) approved by {:#?}", job.id, user);
+        log::info!("job {:?} approved by {:#?}", job.id, user);
 
         let need_approvers = job.outstanding_approvers();
         if need_approvers.is_empty() {
-          log::info!("(job {:?}) fully approved", job.id);
+          log::info!("job {:?} fully approved", job.id);
 
-          jobs.fully_approved(&job.id);
+          if let None = jobs.fully_approved(&job.id) {
+            log::error!("job {:?} was not marked approved");
+          }
         } else {
-          log::info!("(job {:?}) still needs approvers: {:?}", job.id, need_approvers);
+          log::info!("job {:?} still needs approvers: {:?}", job.id, need_approvers);
         }
       },
       | _ => (),
@@ -35,7 +37,7 @@ pub fn on_full_approval_notify(state: &'static crate::State) -> Listener {
 
       log::info!("job {:?}: approval message sent", job.id);
     },
-    | _ => (),
+    | _ => log::info!("on_full_approval_notify not acting on {:?}", ev),
   };
 
   Box::from(f)

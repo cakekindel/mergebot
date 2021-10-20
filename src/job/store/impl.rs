@@ -102,7 +102,6 @@ impl super::Store for Arc<Mutex<StoreData>> {
 
     if let Some(job) = job {
       self.emit(state, Event::Approved(&job, &user));
-
       Some(job.id)
     } else {
       None
