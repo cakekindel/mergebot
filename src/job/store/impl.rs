@@ -174,6 +174,7 @@ impl super::Store for Arc<Mutex<StoreData>> {
 
       if errs.len() > 4 {
         log::error!("job {:?} poisoned!!1", j.id);
+        drop(store);
         self.state_poisoned(&j.id);
       } else {
         store.errored.insert(job_id.clone(), j.clone());
