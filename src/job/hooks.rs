@@ -90,3 +90,17 @@ pub fn on_poison_notify(state: &'static crate::State) -> Listener {
 
   Box::from(f)
 }
+
+/// If done, send slack message
+pub fn on_done_notify(state: &'static crate::State) -> Listener {
+  let f = move |ev: Event| match ev {
+    | Event::Done(j) => {
+      if let Err(e) = state.job_messenger.send_job_done(&j) {
+        log::error!("job {:?}: failed to send 'job done' message {:?}", j.id, e);
+      }
+    },
+    | _ => (),
+  };
+
+  Box::from(f)
+}

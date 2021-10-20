@@ -154,6 +154,7 @@ fn init_job_state_hooks(s: &'static State) {
   s.jobs.attach_listener(job::hooks::on_full_approval_deploy(&s));
   s.jobs.attach_listener(job::hooks::on_failure_poison(&s));
   s.jobs.attach_listener(job::hooks::on_poison_notify(&s));
+  s.jobs.attach_listener(job::hooks::on_done_notify(&s));
 }
 
 fn init_logger() {
