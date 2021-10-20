@@ -55,9 +55,13 @@ impl LocalClient {
           },
           | _ => Err(e),
         })
+        .tap(|ok| log::info!("cloned repo to {}", ok.to_string_lossy()))
+        .tap_err(|err| log::error!("clone failed: {:?}", err))
   }
 
   pub(super) fn git(&self, args: &[&str]) -> git::Result<Output> {
+    log::info!("executing `git {}`", args.join(" "));
+
     Command::new("git").current_dir(&*lock_discard_poison(&self.workdir))
                        .args(args)
                        .output()
