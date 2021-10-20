@@ -1,7 +1,7 @@
 use super::event::*;
 
 /// On approval, check if fully approved, change state, and log
-pub fn on_approval(state: &'static crate::State) -> Listener {
+pub fn on_full_approval_change_state(state: &'static crate::State) -> Listener {
   let cloj = move |ev: Event| {
     if let Event::Approved(job, user) = ev {
       log::info!("job {:?} approved by {:#?}", job.id, user);
@@ -69,6 +69,20 @@ pub fn on_failure_poison(state: &'static crate::State) -> Listener {
         std::thread::spawn(move || {
           state.jobs.state_poisoned(&id);
         });
+      }
+    },
+    | _ => (),
+  };
+
+  Box::from(f)
+}
+
+/// If poisoned, send slack message
+pub fn on_poison_notify(state: &'static crate::State) -> Listener {
+  let f = move |ev: Event| match ev {
+    | Event::Poisoned(j) => {
+      if let Err(e) = state.job_messenger.send_job_failed(&j) {
+        log::error!("job {:?}: failed to send 'job failed' message {:?}", j.id, e);
       }
     },
     | _ => (),

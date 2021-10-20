@@ -8,6 +8,9 @@ pub trait Messenger: 'static + Sync + Send + std::fmt::Debug {
 
   /// Notify that the job has been executed
   fn send_job_approved(&self, job: &Job<job::StateApproved>) -> slack::Result<slack::msg::Id>;
+
+  /// Notify that the job has been executed
+  fn send_job_failed(&self, job: &Job<job::StatePoisoned>) -> slack::Result<slack::msg::Id>;
 }
 
 fn fmt_approvers(approvers: &[&deploy::app::User]) -> String {
@@ -70,6 +73,31 @@ impl<T: slack::msg::Messages> Messenger for T {
              <section_block>
                <text kind=mrkdwn>
                  {format!("Deploy approved! :sunglasses: Let's go to {} :rocket:", job.command.env_name)}
+               </text>
+             </section_block>
+           }.into()]
+    };
+
+    self.send_thread(id, &blocks).map(|rep| rep.id)
+  }
+
+  /// Notify that job has failed (poison)
+  fn send_job_failed(&self, job: &Job<job::StatePoisoned>) -> slack::Result<slack::msg::Id> {
+    let id_missing = slack::Error::Other(String::from("no message to respond to"));
+    let id = job.state
+                .prev // errored
+                .prev // approved
+                .prev // init
+                .msg_id
+                .as_ref()
+                .ok_or(id_missing)?;
+
+    let blocks: Vec<slack_blocks::Block> = {
+      use slack_blocks::blox::*;
+      vec![blox! {
+             <section_block>
+               <text kind=mrkdwn>
+                 {"Deploy failed :skull_and_crossbones:"}
                </text>
              </section_block>
            }.into()]
