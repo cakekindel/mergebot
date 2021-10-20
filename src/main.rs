@@ -160,7 +160,7 @@ fn init_logger() {
     env::set_var("RUST_LOG", "mergebot=debug");
   }
 
-  pretty_env_logger::init();
+  pretty_env_logger::init_timed();
 }
 
 fn create_state_filter() -> StateFilter {
