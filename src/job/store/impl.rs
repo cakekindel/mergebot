@@ -61,9 +61,7 @@ impl EmitEvent for Arc<Mutex<StoreData>> {
   fn emit(&self, lock: MutexGuard<'_, StoreData>, ev: Event) {
     drop(lock);
 
-    LISTENERS.open()
-             .iter()
-             .for_each(|f| f(ev));
+    LISTENERS.open().iter().for_each(|f| f(ev));
   }
 }
 
@@ -172,8 +170,16 @@ impl super::Store for Arc<Mutex<StoreData>> {
                                                 });
 
     if let Some(j) = errored.or(approved) {
-      store.errored.insert(job_id.clone(), j.clone());
-      self.emit(store, Event::Errored(&j));
+      let errs = j.flatten_errors();
+
+      if errs.len() > 4 {
+        log::error!("job {:?} poisoned!!1", j.id);
+        self.state_poisoned(&j.id);
+      } else {
+        store.errored.insert(job_id.clone(), j.clone());
+        self.emit(store, Event::Errored(&j));
+      }
+
       Some(job_id.clone())
     } else {
       None

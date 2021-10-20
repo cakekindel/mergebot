@@ -4,24 +4,24 @@ use super::event::*;
 pub fn on_approval(state: &'static crate::State) -> Listener {
   let cloj = move |ev: Event| {
     if let Event::Approved(job, user) = ev {
-        log::info!("job {:?} approved by {:#?}", job.id, user);
+      log::info!("job {:?} approved by {:#?}", job.id, user);
 
-        let need_approvers = job.outstanding_approvers();
-        if need_approvers.is_empty() {
-          log::info!("job {:?} fully approved", job.id);
+      let need_approvers = job.outstanding_approvers();
+      if need_approvers.is_empty() {
+        log::info!("job {:?} fully approved", job.id);
 
-          let id = job.id.clone();
+        let id = job.id.clone();
 
-          // nested event emissions cause deadlock
-          // so we essentially queue the op in another thread
-          std::thread::spawn(move || {
-            state.jobs.fully_approved(&id);
-          });
-        } else {
-          log::info!("job {:?} still needs approvers: {:?}", job.id, need_approvers);
-        }
+        // nested event emissions cause deadlock
+        // so we essentially queue the op in another thread
+        std::thread::spawn(move || {
+          state.jobs.fully_approved(&id);
+        });
+      } else {
+        log::info!("job {:?} still needs approvers: {:?}", job.id, need_approvers);
       }
-    };
+    }
+  };
 
   Box::from(cloj)
 }

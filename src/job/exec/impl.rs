@@ -109,8 +109,11 @@ fn exec<S: job::State>(job: &Job<S>) {
   } else {
     jobs.state_errored(&job.id, errs);
 
-    let work = Work::Retry(jobs.get_errored(&job.id).unwrap());
-    work.queue();
+    // The above call may poison the job
+    if let Some(j) = jobs.get_errored(&job.id) {
+      let work = Work::Retry(j);
+      work.queue();
+    }
   }
 }
 
@@ -161,7 +164,8 @@ fn worker() {
       log::info!("job {:?}: working", work.job().id);
       exec(&work.job());
     } else {
-      log::info!("Waiting for work to be queued");
+      log::info!("worker thread up");
+
       let lock = lock_discard_poison(&WORK_QUEUED.0);
 
       let work_queued = WORK_QUEUED.1.wait(lock).unwrap();
