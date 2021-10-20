@@ -25,7 +25,8 @@ impl<'a> git::RepoContext for RepoContext<'a> {
     let config_entry = format!("branch.{}.remote", branch.0);
     self.client(|c| {
           c.git(&["config", "--get", &config_entry])
-           .map(|Output(remote)| Branch(format!("{}/{}", remote, branch.0)))
+           .map(|Output(remote)| remote.strip_suffix('\n').map(String::from).unwrap_or(remote))
+           .map(|remote| Branch(format!("{}/{}", remote, branch.0)))
         })
   }
 
