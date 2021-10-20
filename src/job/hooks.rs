@@ -37,7 +37,7 @@ pub fn on_full_approval_notify(state: &'static crate::State) -> Listener {
 
       log::info!("job {:?}: approval message sent", job.id);
     },
-    | _ => log::info!("on_full_approval_notify not acting on {:?}", ev),
+    | _ => (),
   };
 
   Box::from(f)

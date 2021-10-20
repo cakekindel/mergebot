@@ -43,7 +43,15 @@ trait Open<T> {
 
 impl<T> Open<T> for Arc<Mutex<T>> {
   fn open(&self) -> MutexGuard<'_, T> {
-    lock_discard_poison(&*self)
+    use std::sync::TryLockError::*;
+    match self.try_lock() {
+      Ok(lock) => lock,
+      Err(Poisoned(e)) => e.into_inner(),
+      Err(WouldBlock) => {
+        log::info!("lock already acquired; blocking...");
+        lock_discard_poison(&*self)
+      },
+    }
   }
 }
 
