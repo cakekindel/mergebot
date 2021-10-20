@@ -6,7 +6,7 @@ use serde::{Deserialize as De, Serialize as Ser};
 mod messaging;
 pub use messaging::*;
 
-pub mod approval;
+pub mod hooks;
 pub mod store;
 pub mod event;
 pub mod exec;
@@ -42,11 +42,6 @@ impl std::ops::Deref for Id {
   fn deref(&self) -> &String {
     &self.0
   }
-}
-
-/// A hook that will be notified when jobs transition to state S
-pub trait Hook<S: State> {
-  fn on_transition(&self, job: &Job<S>);
 }
 
 /// State a job may be in
@@ -167,5 +162,21 @@ impl Job<StateInit> {
     users.dedup();
 
     users
+  }
+}
+
+impl Job<StateErrored> {
+  /// Recursively flatten `prev_attempt`, yielding a flat list of attempts
+  pub fn flatten_errors(&self) -> Vec<StateErrored> {
+    fn go(err: &Option<Box<StateErrored>>, mut errs: Vec<StateErrored>) -> Vec<StateErrored> {
+      if let &Some(ref err) = err {
+        errs.push(err.as_ref().clone());
+        go(&err.prev_attempt, errs)
+      } else {
+        errs
+      }
+    }
+
+    go(&Some(Box::from(self.state.clone())), vec![self.state.clone()])
   }
 }

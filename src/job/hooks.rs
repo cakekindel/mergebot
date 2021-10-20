@@ -52,3 +52,21 @@ pub fn on_full_approval_deploy(state: &'static crate::State) -> Listener {
 
   Box::from(f)
 }
+
+/// If failed beyond threshold, mark as poisoned
+pub fn on_failure_poison(_: &'static crate::State) -> Listener {
+  let f = move |jobs: Box<&dyn Store>, ev: Event| {
+    match ev {
+      Event::Errored(j) => {
+        let errs = j.flatten_errors();
+        if errs.len() > 4 {
+          log::error!("job {:?} poisoned!!1", j.id);
+          jobs.state_poisoned(&j.id);
+        }
+      },
+      _ => (),
+    }
+  };
+
+  Box::from(f)
+}

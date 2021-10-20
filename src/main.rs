@@ -151,9 +151,10 @@ lazy_static::lazy_static! {
 type StateFilter = warp::filters::BoxedFilter<(&'static State,)>;
 
 fn init_job_state_hooks(s: &'static State) {
-  s.jobs.attach_listener(Box::from(job::approval::on_approval(&s)));
-  s.jobs.attach_listener(Box::from(job::approval::on_full_approval_notify(&s)));
-  s.jobs.attach_listener(Box::from(job::approval::on_full_approval_deploy(&s)));
+  s.jobs.attach_listener(Box::from(job::hooks::on_approval(&s)));
+  s.jobs.attach_listener(Box::from(job::hooks::on_full_approval_notify(&s)));
+  s.jobs.attach_listener(Box::from(job::hooks::on_full_approval_deploy(&s)));
+  s.jobs.attach_listener(Box::from(job::hooks::on_failure_poison(&s)));
 }
 
 fn init_logger() {
