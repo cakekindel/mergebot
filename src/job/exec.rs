@@ -7,8 +7,7 @@ pub mod r#impl;
 
 /// Execute errors
 #[derive(Copy, Clone, Debug)]
-pub enum Error {
-}
+pub enum Error {}
 
 /// Execute result
 pub type Result<T> = core::result::Result<T, Error>;

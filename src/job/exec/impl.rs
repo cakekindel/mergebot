@@ -1,5 +1,6 @@
 use std::{sync::{Condvar, Mutex, MutexGuard},
-          time::Duration, thread};
+          thread,
+          time::Duration};
 
 use chrono::Utc;
 
@@ -45,19 +46,19 @@ impl Work {
     use job::State;
 
     match self {
-      Self::New(j) => j.map_state(|s| s.to_states()),
-      Self::Retry(j) => j.map_state(|s| s.to_states()),
+      | Self::New(j) => j.map_state(|s| s.to_states()),
+      | Self::Retry(j) => j.map_state(|s| s.to_states()),
     }
   }
 
   fn time_til(&self) -> Duration {
     match self {
-      Self::Retry(job) => {
-        job.state.next_attempt.signed_duration_since(Utc::now()).to_std().unwrap_or_default()
-      },
-      Self::New(job) => {
-        Duration::default()
-      },
+      | Self::Retry(job) => job.state
+                               .next_attempt
+                               .signed_duration_since(Utc::now())
+                               .to_std()
+                               .unwrap_or_default(),
+      | Self::New(job) => Duration::default(),
     }
   }
 
@@ -151,7 +152,9 @@ fn worker() {
       if !time_til.is_zero() {
         // REVISIT: if this wait is long, fresh work
         //          will be blocked until done waiting
-        log::info!("job {:?}: waiting for {}ms to retry", work.job().id, time_til.as_millis());
+        log::info!("job {:?}: waiting for {}ms to retry",
+                   work.job().id,
+                   time_til.as_millis());
         sleep(time_til);
       }
 

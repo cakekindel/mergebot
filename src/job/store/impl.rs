@@ -1,11 +1,11 @@
+use std::{collections::HashMap,
+          sync::{Arc, Mutex, MutexGuard}};
+
+use event::{Event, Listener};
 use serde::{Deserialize as De, Serialize as Ser};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::*;
-use event::{Event, Listener};
-
-use crate::{slack, deploy, mutex_extra::lock_discard_poison};
+use crate::{deploy, mutex_extra::lock_discard_poison, slack};
 
 lazy_static::lazy_static! {
   static ref LISTENERS: Mutex<Vec<Listener>> = Mutex::new(Vec::new());
@@ -23,13 +23,11 @@ pub struct StoreData {
 
 impl StoreData {
   pub fn new() -> Self {
-    Self {
-      created: HashMap::new(),
-      approved: HashMap::new(),
-      errored: HashMap::new(),
-      poison: HashMap::new(),
-      done: HashMap::new(),
-    }
+    Self { created: HashMap::new(),
+           approved: HashMap::new(),
+           errored: HashMap::new(),
+           poison: HashMap::new(),
+           done: HashMap::new() }
   }
 }
 
@@ -57,10 +55,9 @@ impl EmitEvent for Arc<Mutex<StoreData>> {
   fn emit(&self, lock: MutexGuard<'_, StoreData>, ev: Event) {
     drop(lock);
 
-    LISTENERS
-      .open()
-      .iter()
-      .for_each(|f| f(Box::from(self as &dyn Store), ev));
+    LISTENERS.open()
+             .iter()
+             .for_each(|f| f(Box::from(self as &dyn Store), ev));
   }
 }
 
@@ -68,22 +65,18 @@ impl super::Store for Arc<Mutex<StoreData>> {
   /// Add a slack message id to a job in Init state
   fn notified(&self, job_id: &Id, msg_id: slack::msg::Id) -> Option<Id> {
     self.open().created.get_mut(job_id).map(|j| {
-      j.state.msg_id = Some(msg_id);
-      j.id.clone()
-    })
+                                         j.state.msg_id = Some(msg_id);
+                                         j.id.clone()
+                                       })
   }
 
   /// Create a new job, returning the created job's id
   fn create(&self, app: deploy::App, command: deploy::Command) -> Id {
-    let job = Job {
-      id: Id::new(),
-      state: StateInit {
-        approved_by: vec![],
-        msg_id: None,
-      },
-      command,
-      app,
-    };
+    let job = Job { id: Id::new(),
+                    state: StateInit { approved_by: vec![],
+                                       msg_id: None },
+                    command,
+                    app };
 
     let mut store = self.open();
     store.created.insert(job.id.clone(), job.clone());
@@ -96,12 +89,10 @@ impl super::Store for Arc<Mutex<StoreData>> {
   fn approved(&self, job_id: &Id, user: deploy::User) -> Option<Id> {
     let mut state = self.open();
 
-    let job = state.created
-         .get_mut(job_id)
-         .map(|j| {
-             j.state.approved_by.push(user.clone());
-             j.clone()
-         });
+    let job = state.created.get_mut(job_id).map(|j| {
+                                             j.state.approved_by.push(user.clone());
+                                             j.clone()
+                                           });
 
     if let Some(job) = job {
       self.emit(state, Event::Approved(&job, &user));
@@ -141,7 +132,9 @@ impl super::Store for Arc<Mutex<StoreData>> {
   fn fully_approved(&self, job_id: &Id) -> Option<Id> {
     let mut state = self.open();
 
-    let job = state.created.remove(job_id).map(|j| j.map_state(|s| StateApproved {prev: s}));
+    let job = state.created
+                   .remove(job_id)
+                   .map(|j| j.map_state(|s| StateApproved { prev: s }));
 
     if let Some(j) = job {
       state.approved.insert(job_id.clone(), j.clone());
@@ -154,28 +147,24 @@ impl super::Store for Arc<Mutex<StoreData>> {
 
   /// Mark a job as errored
   fn state_errored(&self, job_id: &Id, errs: Vec<Error>) -> Option<Id> {
-    use chrono::{Duration as Dur};
+    use chrono::Duration as Dur;
 
     let mut store = self.open();
     let next_attempt = Utc::now() + Dur::seconds(10);
 
-    let errored = store
-      .errored
-      .remove(job_id)
-      .map(|j| j.map_state(|e| StateErrored {
-                  prev: e.prev.clone(),
-                  prev_attempt: Some(Box::from(e)),
-                  next_attempt,
-                  errs: errs.clone(),
-                })
-      );
+    let errored = store.errored.remove(job_id).map(|j| {
+                                                j.map_state(|e| StateErrored { prev: e.prev.clone(),
+                                                                               prev_attempt: Some(Box::from(e)),
+                                                                               next_attempt,
+                                                                               errs: errs.clone() })
+                                              });
 
-    let approved = store.approved.remove(job_id).map(|j| j.map_state(|a| StateErrored {
-      prev: a,
-      prev_attempt: None,
-      next_attempt,
-      errs,
-    }));
+    let approved = store.approved.remove(job_id).map(|j| {
+                                                  j.map_state(|a| StateErrored { prev: a,
+                                                                                 prev_attempt: None,
+                                                                                 next_attempt,
+                                                                                 errs })
+                                                });
 
     if let Some(j) = errored.or(approved) {
       store.errored.insert(job_id.clone(), j.clone());
@@ -189,10 +178,9 @@ impl super::Store for Arc<Mutex<StoreData>> {
   /// Mark a job as poisoned
   fn state_poisoned(&self, job_id: &Id) -> Option<Id> {
     let mut store = self.open();
-    let job = store
-                 .errored
-                 .remove(job_id)
-                 .map(|j| j.map_state(|prev| StatePoisoned {prev}));
+    let job = store.errored
+                   .remove(job_id)
+                   .map(|j| j.map_state(|prev| StatePoisoned { prev }));
 
     if let Some(j) = job {
       store.poison.insert(job_id.clone(), j.clone());
@@ -206,10 +194,9 @@ impl super::Store for Arc<Mutex<StoreData>> {
   /// Mark a job as done
   fn state_done(&self, job_id: &Id) -> Option<Id> {
     let mut store = self.open();
-    let retried = store
-              .errored
-              .remove(job_id)
-              .map(|j| j.map_state(StateDone::SucceededAfterRetry));
+    let retried = store.errored
+                       .remove(job_id)
+                       .map(|j| j.map_state(StateDone::SucceededAfterRetry));
     let succeeded = store.approved.remove(job_id).map(|j| j.map_state(StateDone::Succeeded));
 
     if let Some(job) = succeeded.or(retried) {

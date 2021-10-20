@@ -6,18 +6,17 @@ use serde::{Deserialize as De, Serialize as Ser};
 mod messaging;
 pub use messaging::*;
 
-pub mod hooks;
-pub mod store;
 pub mod event;
 pub mod exec;
+pub mod hooks;
+pub mod store;
 
 use chrono::{DateTime, Utc};
+pub use store::Store;
 
 use crate::{deploy::{App, Command, User},
             git,
             slack};
-
-pub use store::Store;
 
 /// Errors that a job can encounter trying to deploy
 #[derive(Debug, Clone, Ser, De)]
@@ -49,12 +48,36 @@ pub trait State: std::fmt::Debug + Clone {
   fn to_states(self) -> States;
 }
 
-impl State for StateInit {fn to_states(self) -> States {States::Init(self)}}
-impl State for StateApproved {fn to_states(self) -> States {States::Approved(self)}}
-impl State for StateErrored {fn to_states(self) -> States {States::Errored(self)}}
-impl State for StatePoisoned {fn to_states(self) -> States {States::Poisoned(self)}}
-impl State for StateDone {fn to_states(self) -> States {States::Done(self)}}
-impl State for States {fn to_states(self) -> States {self}}
+impl State for StateInit {
+  fn to_states(self) -> States {
+    States::Init(self)
+  }
+}
+impl State for StateApproved {
+  fn to_states(self) -> States {
+    States::Approved(self)
+  }
+}
+impl State for StateErrored {
+  fn to_states(self) -> States {
+    States::Errored(self)
+  }
+}
+impl State for StatePoisoned {
+  fn to_states(self) -> States {
+    States::Poisoned(self)
+  }
+}
+impl State for StateDone {
+  fn to_states(self) -> States {
+    States::Done(self)
+  }
+}
+impl State for States {
+  fn to_states(self) -> States {
+    self
+  }
+}
 
 /// Sum type over job states
 #[derive(Debug, Clone, Ser, De)]
@@ -140,12 +163,10 @@ pub struct Job<S: State> {
 
 impl<T: State> Job<T> {
   pub fn map_state<R: State>(&self, f: impl FnOnce(T) -> R) -> Job<R> {
-    Job {
-      id: self.id.clone(),
-      state: f(self.state.clone()),
-      app: self.app.clone(),
-      command: self.command.clone(),
-    }
+    Job { id: self.id.clone(),
+          state: f(self.state.clone()),
+          app: self.app.clone(),
+          command: self.command.clone() }
   }
 }
 

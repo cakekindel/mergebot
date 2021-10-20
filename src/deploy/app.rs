@@ -135,10 +135,8 @@ pub trait Reader: 'static + Sync + Send + std::fmt::Debug {
 
   /// Find app matching a deploy command
   fn get_matching_cmd(&self, cmd: &super::Command) -> Result<App, super::Error> {
-    use super::Error;
-    use super::Error::*;
-    use crate::extra::StrExtra;
-    use crate::result_extra::ResultExtra;
+    use super::{Error, Error::*};
+    use crate::{extra::StrExtra, result_extra::ResultExtra};
 
     let loose_eq = |a: &str, b: &str| a.trim().to_lowercase() == b.trim().to_lowercase();
 
@@ -146,13 +144,9 @@ pub trait Reader: 'static + Sync + Send + std::fmt::Debug {
       env.name.loose_eq(&cmd.env_name) && env.users.iter().any(|u| u.user_id() == Some(&cmd.user_id))
     };
 
-    let matches_env_and_user = |app: &App| -> bool {
-      app.repos.iter().any(|r| r.environments.iter().any(env_matches))
-    };
+    let matches_env_and_user = |app: &App| -> bool { app.repos.iter().any(|r| r.environments.iter().any(env_matches)) };
 
-    let matches_app = |app: &App| -> bool {
-      app.team_id == cmd.team_id && loose_eq(&app.name, &cmd.app_name)
-    };
+    let matches_app = |app: &App| -> bool { app.team_id == cmd.team_id && loose_eq(&app.name, &cmd.app_name) };
 
     let matches_team = |apps: Vec<App>| -> Result<App, Error> {
       apps.into_iter()
@@ -163,7 +157,9 @@ pub trait Reader: 'static + Sync + Send + std::fmt::Debug {
     self.read()
         .map_err(ReadingApps)
         .and_then(matches_team)
-        .filter(matches_env_and_user, |_| EnvNotFound(cmd.app_name.clone(), cmd.env_name.clone()))
+        .filter(matches_env_and_user, |_| {
+          EnvNotFound(cmd.app_name.clone(), cmd.env_name.clone())
+        })
   }
 }
 

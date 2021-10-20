@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 pub use app::*;
 use serde::{Deserialize as De, Serialize as Ser};
 
-use crate::{slack, job};
+use crate::{job, slack};
 
 /// Models for local configuration file `./deployables.json`
 pub mod app;

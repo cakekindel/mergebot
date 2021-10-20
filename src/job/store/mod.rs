@@ -1,9 +1,8 @@
+use event::Event;
 use nanoid as _;
 
 use super::*;
-use event::Event;
-
-use crate::{slack, deploy};
+use crate::{deploy, slack};
 
 mod r#impl;
 pub use r#impl::StoreData;
@@ -31,12 +30,11 @@ pub trait Store: 'static + Send + Sync + std::fmt::Debug {
       v.into_iter().map(|j| j.map_state(|s| s.to_states()))
     }
 
-    norm(self.get_all_new())
-        .chain(norm(self.get_all_approved()))
-        .chain(norm(self.get_all_errored()))
-        .chain(norm(self.get_all_poisoned()))
-        .chain(norm(self.get_all_done()))
-        .collect::<Vec<_>>()
+    norm(self.get_all_new()).chain(norm(self.get_all_approved()))
+                            .chain(norm(self.get_all_errored()))
+                            .chain(norm(self.get_all_poisoned()))
+                            .chain(norm(self.get_all_done()))
+                            .collect::<Vec<_>>()
   }
 
   /// Create a new job, returning the created job's id

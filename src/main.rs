@@ -52,13 +52,11 @@
 //! [conventional commits]: https://www.conventionalcommits.org/en/v1.0.0/
 
 #![cfg_attr(not(test),
-            forbid(missing_debug_implementations,
-                   unreachable_pub,
-                   unused_crate_dependencies))]
+            forbid(missing_debug_implementations, unreachable_pub, unused_crate_dependencies))]
 #![cfg_attr(not(test), deny(unsafe_code, missing_copy_implementations))]
 
 use std::{env,
-          sync::{Arc, Mutex, Barrier}};
+          sync::{Arc, Barrier, Mutex}};
 
 use log as _;
 use serde_json as _;
@@ -152,8 +150,10 @@ type StateFilter = warp::filters::BoxedFilter<(&'static State,)>;
 
 fn init_job_state_hooks(s: &'static State) {
   s.jobs.attach_listener(Box::from(job::hooks::on_approval(&s)));
-  s.jobs.attach_listener(Box::from(job::hooks::on_full_approval_notify(&s)));
-  s.jobs.attach_listener(Box::from(job::hooks::on_full_approval_deploy(&s)));
+  s.jobs
+   .attach_listener(Box::from(job::hooks::on_full_approval_notify(&s)));
+  s.jobs
+   .attach_listener(Box::from(job::hooks::on_full_approval_deploy(&s)));
   s.jobs.attach_listener(Box::from(job::hooks::on_failure_poison(&s)));
 }
 
@@ -205,11 +205,11 @@ pub async fn main() {
 pub mod filters {
   use std::convert::TryFrom;
 
+  use extra::StrExtra;
   use warp::{reject::{Reject, Rejection},
              reply::Reply};
 
   use super::*;
-  use extra::StrExtra;
 
   /// 401 Unauthorized rejection
   #[derive(Debug)]
@@ -281,23 +281,19 @@ pub mod filters {
   fn handle_approval(state: &'static State, job: &job::Job<job::StateInit>, user_id: &str) {
     use deploy::User;
 
-    let user =
-      job
-      .outstanding_approvers()
-      .into_iter()
-      .find(|u| match u {
-        | User::User { user_id: u_id, .. } => u_id == user_id,
-        | User::Group { group_id, .. } => state.slack_groups
-                                                       .expand(group_id)
-                                                       .map_err(|e| log::error!("{:#?}", e))
-                                                       .unwrap_or_default()
-                                                       .contains(&user_id.to_string()),
-      });
+    let user = job.outstanding_approvers().into_iter().find(|u| match u {
+                                                        | User::User { user_id: u_id, .. } => u_id == user_id,
+                                                        | User::Group { group_id, .. } => {
+                                                          state.slack_groups
+                                                               .expand(group_id)
+                                                               .map_err(|e| log::error!("{:#?}", e))
+                                                               .unwrap_or_default()
+                                                               .contains(&user_id.to_string())
+                                                        },
+                                                      });
 
     if user.is_none() {
-      log::debug!("(job {:?}) user {} approved but isn't an approver",
-                  job.id,
-                  user_id);
+      log::debug!("(job {:?}) user {} approved but isn't an approver", job.id, user_id);
     }
 
     if let Some(user) = user {
@@ -329,20 +325,17 @@ pub mod filters {
                          ReactionAdded { user,
                                          reaction,
                                          item: Item::Message { channel, ts }, }, } => {
-        let matched_job =
-          state.jobs
-               .get_all_new()
-               .into_iter()
-               .find(|j| match j.state.msg_id.as_ref() {
-                 | Some(msg_id) => j.app.team_id == team_id && msg_id.equals(&channel, &ts),
-                 | _ => false,
-               })
-               .and_then(|job| {
-                 match reaction.as_str() {
-                   | "+1" => Some(job),
-                   | _ => None,
-                 }
-               });
+        let matched_job = state.jobs
+                               .get_all_new()
+                               .into_iter()
+                               .find(|j| match j.state.msg_id.as_ref() {
+                                 | Some(msg_id) => j.app.team_id == team_id && msg_id.equals(&channel, &ts),
+                                 | _ => false,
+                               })
+                               .and_then(|job| match reaction.as_str() {
+                                 | "+1" => Some(job),
+                                 | _ => None,
+                               });
 
         if let Some(j) = matched_job {
           handle_approval(state, &j, &user)
