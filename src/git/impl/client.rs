@@ -49,7 +49,7 @@ impl LocalClient {
         .and_then_err(|e| match &e {
           | &Error::CommandFailed(Output(ref msg)) => {
             msg.strip_prefix("fatal: destination path \'")
-               .and_then(|msg| msg.strip_suffix("\' already exists and is not an empty directory."))
+               .and_then(|msg| msg.strip_suffix("\' already exists and is not an empty directory.\n"))
                .map(|dirname| Ok(workdir.join(dirname)))
                .unwrap_or(Err(e))
           },
