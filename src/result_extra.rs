@@ -30,15 +30,15 @@ impl<T, E> ResultExtra<T, E> for Result<T, E> {
 
   fn tap(self, f: impl Fn(&T)) -> Self {
     self.map(|ok| {
-      f(&ok);
-      ok
-    })
+          f(&ok);
+          ok
+        })
   }
 
   fn tap_err(self, f: impl Fn(&E)) -> Self {
     self.map_err(|err| {
-      f(&err);
-      err
-    })
+          f(&err);
+          err
+        })
   }
 }
