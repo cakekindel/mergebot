@@ -12,7 +12,7 @@ pub fn on_approval(_: &'static crate::State) -> Listener {
           log::info!("job {:?} fully approved", job.id);
 
           if let None = jobs.fully_approved(&job.id) {
-            log::error!("job {:?} was not marked approved");
+            log::error!("job {:?} was not marked approved", job.id);
           }
         } else {
           log::info!("job {:?} still needs approvers: {:?}", job.id, need_approvers);
