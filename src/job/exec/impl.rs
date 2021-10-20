@@ -88,16 +88,16 @@ fn exec<S: job::State>(job: &Job<S>) {
                                     .expect("Environment was already matched against command");
 
                   git.repo(&app_repo.url, &job.app.name).and_then(|repo| {
-                                                          // fetch all upstreams
                                                           repo.fetch_all()?;
-                                                          // switch base
-                                                          repo.switch(&env.base)?;
-                                                          // make sure base up to date
+
+                                                          repo.switch(&env.target)?;
                                                           repo.update_branch()?;
-                                                          // merge in target's upstream
+
+                                                          repo.switch(&env.base)?;
+                                                          repo.update_branch()?;
+
                                                           repo.upstream(&env.target).and_then(|b| repo.merge(&b))?;
 
-                                                          // push changes
                                                           repo.push()
                                                         })
                 })
