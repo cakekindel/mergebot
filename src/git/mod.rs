@@ -6,6 +6,12 @@ pub mod r#impl;
 #[derive(PartialEq, Clone, Debug, Ser, De)]
 pub struct Branch(pub String);
 
+impl From<&str> for Branch {
+  fn from(b: &str) -> Self {
+    Self(b.to_string())
+  }
+}
+
 /// Some raw command output (stdout or stderr)
 #[derive(PartialEq, Clone, Debug, Ser, De)]
 pub struct Output(String);
