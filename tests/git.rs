@@ -196,14 +196,16 @@ fn test_fetch(state: &State, repo: &Box<dyn git::RepoContext>) {
        .expect_ok("make new branch in remote");
 
   let get_branches = || {
-    let branches = state.run("git", ["branch", "-r"]).expect_ok("list remote branches").stdout;
+    let branches = state.run("git", ["branch", "-r"])
+                        .expect_ok("list remote branches")
+                        .stdout;
     let branches = String::from_utf8_lossy(&branches).to_string();
     branches.strip_suffix("\n")
-        .unwrap()
-        .split('\n')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.contains("HEAD"))
-        .collect::<Vec<_>>()
+            .unwrap()
+            .split('\n')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.contains("HEAD"))
+            .collect::<Vec<_>>()
   };
 
   assert!(!get_branches().contains(&"origin/foobar".to_string()));
