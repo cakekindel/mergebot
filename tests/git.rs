@@ -4,7 +4,7 @@ use std::{ffi::OsStr,
 
 use mergebot::git;
 
-const REPO_URL: &'static str = "git@github.com:cakekindel/mergebot_test";
+const REPO_URL: &'static str = "https://www.github.com/cakekindel/mergebot_test.git";
 
 trait ExpectOk {
   fn expect_ok(self, msg: &str) -> Self;
