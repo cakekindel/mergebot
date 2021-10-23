@@ -75,12 +75,17 @@ impl LocalClient {
 
 impl git::Client for StaticClient {
   fn repo<'a>(&'a self, url: &str, dirname: &str) -> git::Result<Box<dyn git::RepoContext>> {
-    let mut lock = GIT_CLIENT.lock().map_err(|p| p.into_inner()).unwrap_or_else(|e| e);
+    let lock = lock_discard_poison(&GIT_CLIENT);
+    let git = lock.as_ref().unwrap();
 
-    {
-      let git = lock.as_mut().expect("was initialized");
-      git.clone(url, dirname).map(|dir| git.cd(dir))
-    }.map(|_| git::r#impl::RepoContext::new(lock))
-     .map(|c| Box::from(c) as Box<dyn git::RepoContext>)
+    git.git(&["config",
+              "--global",
+              "user.email",
+              "donotreply@mergebot.orionkindel.com"])
+       .and_then(|_| git.git(&["config", "--global", "user.name", "mergebot"]))
+       .and_then(|_| git.clone(url, dirname))
+       .map(|dir| git.cd(dir))
+       .map(|_| git::r#impl::RepoContext::new(lock))
+       .map(|c| Box::from(c) as Box<dyn git::RepoContext>)
   }
 }

@@ -14,6 +14,14 @@ readme = "README.md"
 keywords = []
 categories = []
 
+[lib]
+name = "mergebot"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mergebot_bin"
+path = "src/main.rs"
+
 [badges]
 maintenance = { status = "actively-developed" }
 
@@ -36,3 +44,6 @@ http = "0.2"
 bytes = "1.1"
 hex = "0.4"
 chrono = {version = "0.4", features = ["serde"]}
+
+[dev-dependencies]
+simple_logger = "1.13"
