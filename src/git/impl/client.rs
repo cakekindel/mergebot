@@ -88,6 +88,7 @@ impl git::Client for StaticClient {
                      "donotreply@mergebot.orionkindel.com"])
               .map(|_| ())
          } else {
+           log::info!("git user email set to {}", out.0);
            Ok(())
          }
        })
@@ -96,6 +97,7 @@ impl git::Client for StaticClient {
          if out.0.is_empty() {
            git.git(&["config", "--global", "user.name", "mergebot"]).map(|_| ())
          } else {
+           log::info!("git user name set to {}", out.0);
            Ok(())
          }
        })
