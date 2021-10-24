@@ -92,7 +92,7 @@ impl git::Client for StaticClient {
            Ok(())
          }
        })
-       .and_then(|_| git.git(&["config", "--get", "user.email"]).and_then_err(|e| match e {Error::CommandFailed(out) => Ok(out), _ => Err(e)}))
+       .and_then(|_| git.git(&["config", "--get", "user.name"]).and_then_err(|e| match e {Error::CommandFailed(out) => Ok(out), _ => Err(e)}))
        .and_then(|out| {
          if out.0.is_empty() {
            git.git(&["config", "--global", "user.name", "mergebot"]).map(|_| ())
