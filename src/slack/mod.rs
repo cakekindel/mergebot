@@ -28,14 +28,16 @@ pub enum Error {
 /// Represents the real slack API, makes HTTP requests
 #[derive(Clone, Debug)]
 pub struct Api {
+  base_url: String,
   token: String,
   client: &'static reqwest::blocking::Client,
 }
 
 impl Api {
   /// Create a new instance
-  pub fn new(token: &str, client: &'static reqwest::blocking::Client) -> Self {
-    Self { token: token.into(),
+  pub fn new(base_url: impl ToString, token: impl ToString, client: &'static reqwest::blocking::Client) -> Self {
+    Self { base_url: base_url.to_string(),
+           token: token.to_string(),
            client }
   }
 }

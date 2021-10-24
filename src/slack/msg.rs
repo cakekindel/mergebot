@@ -68,7 +68,7 @@ fn send_body(channel: Option<&str>,
   let mut map = serde_json::Map::new();
   let channel = thread_parent.map(|id| id.channel.as_str())
                              .or(channel)
-                             .expect("channel or thread_parent to be set");
+                             .expect("channel or thread_parent should be set");
   let blocks = serde_json::to_value(blocks).expect("blocks should serialize");
 
   map.insert("channel".into(), channel.into());
@@ -81,13 +81,14 @@ fn send_body(channel: Option<&str>,
   map
 }
 
-fn send_base(token: &str,
+fn send_base(base_url: &str,
+             token: &str,
              client: &reqwest::blocking::Client,
              channel_id: Option<&str>,
              thread_parent: Option<&Id>,
              blocks: &[Block])
              -> Result<Rep> {
-  client.post("https://slack.com/api/chat.postMessage")
+  client.post(format!("{}/api/chat.postMessage", base_url))
         .json(&send_body(channel_id, blocks, thread_parent))
         .header("authorization", format!("Bearer {}", token))
         .send()
@@ -99,10 +100,15 @@ fn send_base(token: &str,
 
 impl Messages for Api {
   fn send(&self, channel_id: &str, blocks: &[Block]) -> Result<Rep> {
-    send_base(&self.token, self.client, Some(channel_id), None, blocks)
+    send_base(&self.base_url, &self.token, self.client, Some(channel_id), None, blocks)
   }
 
   fn send_thread(&self, thread_parent: &Id, blocks: &[Block]) -> Result<Rep> {
-    send_base(&self.token, self.client, None, Some(thread_parent), blocks)
+    send_base(&self.base_url,
+              &self.token,
+              self.client,
+              None,
+              Some(thread_parent),
+              blocks)
   }
 }
