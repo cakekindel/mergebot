@@ -176,8 +176,8 @@ pub mod filters {
     mergebot_state.and(warp::filters::body::bytes())
                   .and(warp::filters::header::value("X-Slack-Request-Timestamp"))
                   .and(warp::filters::header::value("X-Slack-Signature"))
-                  .and_then(|state, body: bytes::Bytes, ts, sig| async move {
-                    if slack::request_authentic(state, body.clone(), ts, sig) {
+                  .and_then(|state: &'static State, body: bytes::Bytes, ts, sig| async move {
+                    if slack::request_authentic(&state.slack_signing_secret, body.clone(), ts, sig) {
                       Ok(body)
                     } else {
                       Err(warp::reject::custom(Unauthorized))

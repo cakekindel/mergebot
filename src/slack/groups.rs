@@ -18,7 +18,7 @@ pub trait Groups: 'static + Sync + Send + std::fmt::Debug {
 impl Groups for super::Api {
   fn expand(&self, group_id: &str) -> Result<Vec<String>> {
     self.client
-        .get(format!("https://slack.com/api/usergroups.users.list?usergroup={}", group_id))
+        .get(format!("{}/api/usergroups.users.list?usergroup={}", self.base_url, group_id))
         .header("authorization", format!("Bearer {}", self.token))
         .send()
         .and_then(|rep| rep.error_for_status())

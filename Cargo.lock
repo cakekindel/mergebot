@@ -12,6 +12,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "assert-json-diff"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50f1c3703dd33532d7f0ca049168930e9099ecac238e23cf932f3a69c42f06da"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -115,6 +125,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "colored"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3616f750b84d8f0de8a58bda93e08e2a81ad3f523089b05f1dffecab48c6cbd"
+dependencies = [
+ "atty",
+ "lazy_static",
+ "winapi",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -148,6 +169,12 @@ dependencies = [
  "generic-array",
  "subtle",
 ]
+
+[[package]]
+name = "difference"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "524cbf6897b527295dff137cec09ecf3a05f4fddffd7dfcd1585403449e74198"
 
 [[package]]
 name = "digest"
@@ -583,6 +610,7 @@ dependencies = [
  "http",
  "lazy_static",
  "log",
+ "mockito",
  "nanoid",
  "pretty_env_logger",
  "reqwest",
@@ -632,6 +660,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9f1c5b025cda876f66ef43a113f91ebc9f4ccef34843000e0adf6ebbab84e21"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "mockito"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d10030163d67f681db11810bc486df3149e6d91c8b4f3f96fa8b62b546c2cef8"
+dependencies = [
+ "assert-json-diff",
+ "colored 2.0.0",
+ "difference",
+ "httparse",
+ "lazy_static",
+ "log",
+ "rand 0.8.4",
+ "regex",
+ "serde_json",
+ "serde_urlencoded",
 ]
 
 [[package]]
@@ -1177,7 +1223,7 @@ checksum = "b7de33c687404ec3045d4a0d437580455257c0436f858d702f244e7d652f9f07"
 dependencies = [
  "atty",
  "chrono",
- "colored",
+ "colored 1.9.3",
  "log",
  "winapi",
 ]

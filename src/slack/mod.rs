@@ -28,20 +28,22 @@ pub enum Error {
 /// Represents the real slack API, makes HTTP requests
 #[derive(Clone, Debug)]
 pub struct Api {
+  base_url: String,
   token: String,
   client: &'static reqwest::blocking::Client,
 }
 
 impl Api {
   /// Create a new instance
-  pub fn new(token: &str, client: &'static reqwest::blocking::Client) -> Self {
-    Self { token: token.into(),
+  pub fn new(base_url: impl ToString, token: impl ToString, client: &'static reqwest::blocking::Client) -> Self {
+    Self { base_url: base_url.to_string(),
+           token: token.to_string(),
            client }
   }
 }
 
 /// Validate an incoming HTTP request from slack
-pub fn request_authentic(state: &'static crate::State,
+pub fn request_authentic(signing_secret: &str,
                          bytes: bytes::Bytes,
                          ts: http::HeaderValue,
                          inbound_sig: http::HeaderValue)
@@ -55,7 +57,7 @@ pub fn request_authentic(state: &'static crate::State,
   let inbound_sig = String::from_utf8_lossy(inbound_sig.as_bytes()).to_string();
   let base_string = [b"v0:", ts.as_bytes(), b":", &bytes].concat();
 
-  let mut mac = HmacSha256::new_from_slice(state.slack_signing_secret.as_bytes()).unwrap();
+  let mut mac = HmacSha256::new_from_slice(signing_secret.as_bytes()).unwrap();
   mac.update(&base_string);
 
   let sig = mac.finalize().into_bytes()[..].to_vec();
@@ -75,12 +77,13 @@ pub fn request_authentic(state: &'static crate::State,
                ts,
                bytes,
                hex::decode(inbound_sig),
-               state.slack_signing_secret,
+               signing_secret,
                sig);
   }
 
   valid
 }
+
 /// Payload sent by slack on slash commands.
 ///
 /// [https://api.slack.com/interactivity/slash-commands#responding_to_commands]
@@ -103,8 +106,7 @@ pub fn request_authentic(state: &'static crate::State,
 ///   "user_name": "cakekindel"
 /// }
 /// ```
-
-#[derive(Ser, De, Debug)]
+#[derive(Ser, De, Debug, PartialEq)]
 pub struct SlashCommand {
   /// The command that was typed in to trigger this request. This value can be useful if you want to use a single Request URL to service multiple Slash Commands, as it lets you tell them apart.
   pub command: String,
@@ -126,4 +128,25 @@ pub struct SlashCommand {
   pub text: String,
   /// The ID of the user who triggered the command.
   pub user_id: String,
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  #[test]
+  fn slash_command_de() {
+    let expected = SlashCommand { text: String::from("94070"),
+                                  user_id: String::from("U2147483697"),
+                                  team_id: String::from("T0001"),
+                                  team_domain: String::from("example"),
+                                  response_url: String::from("https://hooks.slack.com/commands/1234/5678"),
+                                  channel_id: String::from("C2147483705"),
+                                  command: String::from("/weather") };
+
+    let data = r#"token=gIkuvaNzQIHg97ATvDxqgjtO&team_id=T0001&team_domain=example&enterprise_id=E0001&enterprise_name=Globular%20Construct%20Inc&channel_id=C2147483705&channel_name=test&user_id=U2147483697&user_name=Steve&command=/weather&text=94070&response_url=https://hooks.slack.com/commands/1234/5678&trigger_id=13345224609.738474920.8088930838d88f008e0&api_app_id=A123456"#;
+
+    let parsed = serde_urlencoded::from_str::<super::SlashCommand>(data).unwrap();
+
+    assert_eq!(parsed, expected);
+  }
 }

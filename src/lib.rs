@@ -62,7 +62,7 @@ lazy_static::lazy_static! {
   pub static ref CLIENT: reqwest::blocking::Client =reqwest::blocking::Client::new();
   pub static ref STATE: State = {
     let slack_token = env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required");
-    let slack_api = slack::Api::new(&slack_token, &CLIENT);
+    let slack_api = slack::Api::new("https://www.slack.com", &slack_token, &CLIENT);
 
     git::r#impl::init(env::var("GIT_WORKDIR").expect("GIT_WORKDIR required"));
 
