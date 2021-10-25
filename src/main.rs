@@ -323,6 +323,7 @@ pub mod filters {
                                                                   warp::reply::with_status(String::new(),
                                                                                            http::StatusCode::OK)
                                                                 })
+                                                                .tap_err(|e| log::error!("{:?}", e))
                                                                 .map_err(|_| failed())
                                                                 .unwrap_or_else(|e| e)
                                                               })
