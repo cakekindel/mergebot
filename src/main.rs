@@ -319,7 +319,7 @@ pub mod filters {
                          .map_err(deploy::Error::SlackApi)
                          .map(|msg_id| mergebot.jobs.notified(&job.id, msg_id))
                    }) // [6]
-                   .map(|job| warp::reply::with_status(format!("```{:#?}```", job), http::StatusCode::OK))
+                   .map(|_| warp::reply::with_status(String::new(), http::StatusCode::OK))
                    .map_err(|_| warp::reply::with_status("Uh oh :confused: I wasn't able to do that. <https://github.com/cakekindel/mergebot/issues|Please file an issue>!".to_string(), http::StatusCode::OK))
              })
              .map(|rep| Ok(rep) as Result<warp::reply::WithStatus<String>, warp::reject::Rejection>)
