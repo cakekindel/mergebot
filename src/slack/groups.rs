@@ -13,6 +13,9 @@ struct Rep {
 pub trait Groups: 'static + Sync + Send + std::fmt::Debug {
   /// Expand a group id into user ids
   fn expand(&self, group_id: &str) -> Result<Vec<String>>;
+
+  /// Check if a group contains a user
+  fn contains_user(&self, group_id: &str, user_id: &str) -> Result<bool>;
 }
 
 impl Groups for super::Api {
@@ -28,5 +31,9 @@ impl Groups for super::Api {
           | true => Ok(rep.users.unwrap_or_default()),
           | false => Err(Error::Slack(rep.error.unwrap_or_else(|| "".into()))),
         })
+  }
+
+  fn contains_user(&self, group_id: &str, user_id: &str) -> Result<bool> {
+    self.expand(group_id).map(|g| g.contains(&user_id.to_string()))
   }
 }

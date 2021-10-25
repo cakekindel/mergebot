@@ -1,4 +1,22 @@
 use super::event::*;
+use crate::result_extra::*;
+
+pub fn on_create_notify(state: &'static crate::State) -> Listener {
+  let cloj = move |ev: Event| {
+    if let Event::Created(job) = ev {
+      log::info!("job {:?} created", job.id);
+      state.job_messenger
+           .send_job_created(&job)
+           .tap_err(|e| log::error!("job {:?}: error notifying create {:?}", job.id, e))
+           .tap(|msg_id| {
+             state.jobs.notified(&job.id, msg_id.clone());
+           })
+           .ok();
+    }
+  };
+
+  Box::from(cloj)
+}
 
 /// On approval, check if fully approved, change state, and log
 pub fn on_full_approval_change_state(state: &'static crate::State) -> Listener {

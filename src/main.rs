@@ -62,6 +62,7 @@ use warp::Filter;
 type StateFilter = warp::filters::BoxedFilter<(&'static State,)>;
 
 fn init_job_state_hooks(s: &'static State) {
+  s.jobs.attach_listener(job::hooks::on_create_notify(&s));
   s.jobs.attach_listener(job::hooks::on_full_approval_change_state(&s));
   s.jobs.attach_listener(job::hooks::on_full_approval_notify(&s));
   s.jobs.attach_listener(job::hooks::on_full_approval_deploy(&s));
@@ -122,7 +123,7 @@ pub mod filters {
   use warp::{reject::{Reject, Rejection},
              reply::Reply};
 
-  use super::*;
+  use super::{result_extra::ResultExtra, *};
 
   /// 401 Unauthorized rejection
   #[derive(Debug)]
@@ -147,7 +148,7 @@ pub mod filters {
 
   /// The composite warp filter that defines our HTTP api
   pub fn api(state: fn() -> StateFilter) -> filter!() {
-    hello().or(handle_command(state))
+    hello().or(command_filter(state))
            .or(event_filter(state))
            .or(get_jobs(state))
            .recover(handle_unauthorized)
@@ -194,15 +195,16 @@ pub mod filters {
   fn handle_approval(state: &'static State, job: &job::Job<job::StateInit>, user_id: &str) {
     use deploy::User;
 
+    let user_in_group = |group_id: &str| {
+      state.slack_groups
+           .contains_user(group_id, user_id)
+           .map_err(|e| log::error!("{:#?}", e))
+           .unwrap_or(false)
+    };
+
     let user = job.outstanding_approvers().into_iter().find(|u| match u {
                                                         | User::User { user_id: u_id, .. } => u_id == user_id,
-                                                        | User::Group { group_id, .. } => {
-                                                          state.slack_groups
-                                                               .expand(group_id)
-                                                               .map_err(|e| log::error!("{:#?}", e))
-                                                               .unwrap_or_default()
-                                                               .contains(&user_id.to_string())
-                                                        },
+                                                        | User::Group { group_id, .. } => user_in_group(&group_id),
                                                       });
 
     if user.is_none() {
@@ -238,20 +240,20 @@ pub mod filters {
                          ReactionAdded { user,
                                          reaction,
                                          item: Item::Message { channel, ts }, }, } => {
+        if reaction.as_str() != "+1" {
+          return Ok(ok(String::new()));
+        }
+
         let matched_job = state.jobs
                                .get_all_new()
                                .into_iter()
                                .find(|j| match j.state.msg_id.as_ref() {
                                  | Some(msg_id) => j.app.team_id == team_id && msg_id.equals(&channel, &ts),
                                  | _ => false,
-                               })
-                               .and_then(|job| match reaction.as_str() {
-                                 | "+1" => Some(job),
-                                 | _ => None,
                                });
 
         if let Some(j) = matched_job {
-          handle_approval(state, &j, &user)
+          handle_approval(state, &j, &user);
         }
 
         Ok(ok(String::new()))
@@ -281,49 +283,49 @@ pub mod filters {
   // [8] - when approval conditions met, mergebot executes merge job (`git switch <target>; git merge <base> --no-edit --ff-only --no-verify; git push --no-verify;`)
 
   /// Initiate a deployment
-  fn handle_command(state: fn() -> StateFilter) -> filter!((impl Reply,)) {
-    warp::path!("api" / "v1" / "command")
-         .and(warp::post())
-         .and(slack_request_authentic(state())) // [0]
-         .and(state())
-         .and_then(|body: bytes::Bytes, mergebot: &'static State| async move {
-           // need to parse body manually because warp doesn't allow
-           // using body filters twice
-           serde_urlencoded::from_bytes::<slack::SlashCommand>(&body)
-             .map_err(|e| {
-               log::error!("{:#?}", e); // if slack sends us a bad body I need to know about it
-               warp::reply::with_status(String::new(), http::StatusCode::BAD_REQUEST)
-             })
-             .and_then(|slash| {
-               deploy::Command::try_from(slash) // [1]
-                   .and_then(|cmd| mergebot.app_reader.get_matching_cmd(&cmd).map(|app| (cmd, app))) // [2], [3], [4]
-                   .and_then(|(cmd, app)| {
-                     let existing = mergebot
-                       .jobs
-                       .get_all()
-                       .into_iter()
-                       .find(
-                           |j| j.app == app && j.command.env_name.loose_eq(&cmd.env_name)
-                       );
+  fn command_filter(state: fn() -> StateFilter) -> filter!((impl Reply,)) {
+    warp::path!("api" / "v1" / "command").and(warp::post())
+                                         .and(slack_request_authentic(state())) // [0]
+                                         .and(state())
+                                         .and_then(handle_command)
+  }
 
-                     if let Some(job) = existing {
-                       Err(deploy::Error::JobAlreadyQueued(job))
-                     } else {
-                       Ok(mergebot.jobs.create(app, cmd))
-                         .map(|id| mergebot.jobs.get_new(&id).unwrap())
-                     }
-                   }) // [5]
-                   .and_then(|job| {
-                     mergebot.job_messenger
-                         .send_job_created(&job)
-                         .map_err(deploy::Error::SlackApi)
-                         .map(|msg_id| mergebot.jobs.notified(&job.id, msg_id))
-                   }) // [6]
-                   .map(|_| warp::reply::with_status(String::new(), http::StatusCode::OK))
-                   .map_err(|_| warp::reply::with_status("Uh oh :confused: I wasn't able to do that. <https://github.com/cakekindel/mergebot/issues|Please file an issue>!".to_string(), http::StatusCode::OK))
-             })
-             .map(|rep| Ok(rep) as Result<warp::reply::WithStatus<String>, warp::reject::Rejection>)
-             .unwrap_or_else(Ok)
-         })
+  async fn handle_command(body: bytes::Bytes,
+                          mergebot: &'static State)
+                          -> Result<warp::reply::WithStatus<String>, warp::reject::Rejection> {
+    let try_create_job = |(cmd, app): (deploy::Command, _)| {
+      let existing = mergebot.jobs
+                             .get_all()
+                             .into_iter()
+                             .find(|j| j.app == app && j.command.env_name.loose_eq(&cmd.env_name));
+
+      if let Some(job) = existing {
+        Err(deploy::Error::JobAlreadyQueued(job))
+      } else {
+        Ok(mergebot.jobs.create(app, cmd)).map(|id| mergebot.jobs.get_new(&id).unwrap())
+      }
+    };
+
+    let bad_req = || warp::reply::with_status(String::new(), http::StatusCode::BAD_REQUEST);
+    let failed = || {
+      warp::reply::with_status("Uh oh :confused: I wasn't able to do that. <https://github.com/cakekindel/mergebot/issues|Please file an issue>!".to_string(), http::StatusCode::OK)
+    };
+
+    serde_urlencoded::from_bytes::<slack::SlashCommand>(&body).tap_err(|e| log::error!("{:#?}", e))
+                                                              .map(|slash| {
+                                                                deploy::Command::try_from(slash).and_then(|cmd| {
+                                                                  mergebot.app_reader
+                                                                          .get_matching_cmd(&cmd)
+                                                                          .map(|app| (cmd, app))
+                                                                }) // [2], [3], [4]
+                                                                .and_then(try_create_job)
+                                                                .map(|_| {
+                                                                  warp::reply::with_status(String::new(),
+                                                                                           http::StatusCode::OK)
+                                                                })
+                                                                .map_err(|_| failed())
+                                                                .unwrap_or_else(|e| e)
+                                                              })
+                                                              .and_then_err(|_| Ok(bad_req()))
   }
 }
