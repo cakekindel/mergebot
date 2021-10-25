@@ -90,13 +90,13 @@ fn exec<S: job::State>(job: &Job<S>) {
                   git.repo(&app_repo.url, &job.app.name).and_then(|repo| {
                                                           repo.fetch_all()?;
 
-                                                          repo.switch(&env.target)?;
-                                                          repo.update_branch()?;
-
                                                           repo.switch(&env.base)?;
                                                           repo.update_branch()?;
 
-                                                          repo.upstream(&env.target).and_then(|b| repo.merge(&b))?;
+                                                          repo.switch(&env.target)?;
+                                                          repo.update_branch()?;
+
+                                                          repo.merge(&env.base)?;
 
                                                           repo.push()
                                                         })
