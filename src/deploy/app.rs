@@ -30,8 +30,6 @@ pub struct Repo {
   pub url: String,
   /// Pretty name of the repo. Not matched against.
   pub name: String,
-  /// SSH key for pushing to this repo.
-  pub git_ssh_key: String,
   /// The environments contained within the repo
   pub environments: Vec<Mergeable>,
 }
