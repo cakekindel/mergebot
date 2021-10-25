@@ -51,13 +51,9 @@ mod tests {
   fn tap() {
     let mut effect = "none";
 
-    Result::<(), ()>::Ok(())
-      .tap(|_| effect = "ok")
-      .ok();
+    Result::<(), ()>::Ok(()).tap(|_| effect = "ok").ok();
 
-    Result::<(), ()>::Err(())
-      .tap(|_| panic!("dont call me"))
-      .ok();
+    Result::<(), ()>::Err(()).tap(|_| panic!("dont call me")).ok();
 
     assert_eq!(effect, "ok");
   }
@@ -66,13 +62,9 @@ mod tests {
   fn tap_err() {
     let mut effect = "none";
 
-    Result::<(), ()>::Err(())
-      .tap_err(|_| effect = "err")
-      .ok();
+    Result::<(), ()>::Err(()).tap_err(|_| effect = "err").ok();
 
-    Result::<(), ()>::Ok(())
-      .tap_err(|_| panic!("dont call me"))
-      .ok();
+    Result::<(), ()>::Ok(()).tap_err(|_| panic!("dont call me")).ok();
 
     assert_eq!(effect, "err");
   }
@@ -80,38 +72,32 @@ mod tests {
   #[test]
   fn and_then_err() {
     // is not called on ok
-    Result::<&'_ str, &'_ str>::Ok("ok")
-      .and_then_err::<(), _>(|_| panic!("should not have been called"))
-      .ok();
+    Result::<&'_ str, &'_ str>::Ok("ok").and_then_err::<(), _>(|_| panic!("should not have been called"))
+                                        .ok();
 
     // allows transforming err -> ok
-    Result::<&'_ str, &'_ str>::Err("oh no")
-      .and_then_err::<(), _>(|_| Ok("actually that's fine"))
-      .expect("should be ok");
+    Result::<&'_ str, &'_ str>::Err("oh no").and_then_err::<(), _>(|_| Ok("actually that's fine"))
+                                            .expect("should be ok");
 
     // allows transforming err -> err
-    Result::<&'_ str, &'_ str>::Err("oh no")
-      .and_then_err(|_| Err("actually that's not fine"))
-      .expect_err("should be err");
- }
+    Result::<&'_ str, &'_ str>::Err("oh no").and_then_err(|_| Err("actually that's not fine"))
+                                            .expect_err("should be err");
+  }
 
   #[test]
   fn filter() {
     // is not called on err
-    Result::<&'_ str, &'_ str>::Err("ok")
-      .filter(|_| panic!("dont call me"), |_| panic!("dont call me either"))
-      .unwrap_err();
+    Result::<&'_ str, &'_ str>::Err("ok").filter(|_| panic!("dont call me"), |_| panic!("dont call me either"))
+                                         .unwrap_err();
 
     let is_twelve = |n: usize| n == 12;
 
     // when ok passes pred
-    Result::<usize, usize>::Ok(12)
-      .filter(|n| is_twelve(*n), |_| panic!("dont call me"))
-      .unwrap();
+    Result::<usize, usize>::Ok(12).filter(|n| is_twelve(*n), |_| panic!("dont call me"))
+                                  .unwrap();
 
     // when ok fails pred
-    Result::<usize, &'_ str>::Ok(14)
-      .filter(|n| is_twelve(*n), |_| "not ok")
-      .unwrap_err();
- }
+    Result::<usize, &'_ str>::Ok(14).filter(|n| is_twelve(*n), |_| "not ok")
+                                    .unwrap_err();
+  }
 }
