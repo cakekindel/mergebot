@@ -28,7 +28,7 @@ pub enum Error {
   /// Couldn't spawn git command
   CouldNotSpawnGit(String),
   /// Git command exited not OK with this message
-  CommandFailed(Output),
+  CommandFailed(String, Output),
   /// update_branch called before switch
   NoBranchToUpdate,
   /// Other

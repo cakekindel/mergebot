@@ -47,7 +47,7 @@ impl LocalClient {
     self.git(&["clone", url.as_ref(), dirname.as_ref().to_string_lossy().as_ref()])
         .map(|_| workdir.join(dirname))
         .and_then_err(|e| match &e {
-          | &Error::CommandFailed(Output(ref msg)) => {
+          | &Error::CommandFailed(_, Output(ref msg)) => {
             msg.strip_prefix("fatal: destination path \'")
                .and_then(|msg| msg.strip_suffix("\' already exists and is not an empty directory.\n"))
                .map(|dirname| Ok(workdir.join(dirname)))
@@ -60,7 +60,9 @@ impl LocalClient {
   }
 
   pub(super) fn git(&self, args: &[&str]) -> git::Result<Output> {
-    log::info!("executing `git {}`", args.join(" "));
+    let command = format!("git {}", args.join(" "));
+
+    log::info!("executing `{}`", command);
 
     Command::new("git").current_dir(&*lock_discard_poison(&self.workdir))
                        .args(args)
@@ -68,7 +70,7 @@ impl LocalClient {
                        .map_err(|e| format!("{:#?}", e))
                        .map_err(Error::CouldNotSpawnGit)
                        .filter(|out| out.status.success(),
-                               |out| Error::CommandFailed(Output::from_bytes(out.stderr)))
+                               |out| Error::CommandFailed(command.clone(), Output::from_bytes(out.stderr)))
                        .map(|out| Output::from_bytes(out.stdout))
   }
 }
@@ -80,7 +82,7 @@ impl git::Client for StaticClient {
 
     git.git(&["config", "--get", "user.email"])
        .and_then_err(|e| match e {
-         | Error::CommandFailed(out) => Ok(out),
+         | Error::CommandFailed(_, out) => Ok(out),
          | _ => Err(e),
        })
        .and_then(|out| {
@@ -97,7 +99,7 @@ impl git::Client for StaticClient {
        })
        .and_then(|_| {
          git.git(&["config", "--get", "user.name"]).and_then_err(|e| match e {
-                                                     | Error::CommandFailed(out) => Ok(out),
+                                                     | Error::CommandFailed(_, out) => Ok(out),
                                                      | _ => Err(e),
                                                    })
        })

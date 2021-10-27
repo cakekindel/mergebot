@@ -95,6 +95,18 @@ pub fn on_failure_poison(state: &'static crate::State) -> Listener {
   Box::from(f)
 }
 
+/// Log errors
+pub fn on_failure_log(_: &'static crate::State) -> Listener {
+  let f = move |ev: Event| match ev {
+    | Event::Errored(j) => {
+      log::error!("job {:?} encountered error(s) {:?}", j, j.state.errs);
+    },
+    | _ => (),
+  };
+
+  Box::from(f)
+}
+
 /// If poisoned, send slack message
 pub fn on_poison_notify(state: &'static crate::State) -> Listener {
   let f = move |ev: Event| match ev {
