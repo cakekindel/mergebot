@@ -155,6 +155,7 @@ impl super::Store for Arc<Mutex<StoreData>> {
     let mut store = self.open();
     let next_attempt = Utc::now() + Dur::seconds(10);
 
+    // Jobs can be transitioned to "Errored" from "Approved" or a previous "Errored"
     let errored = store.errored.remove(job_id).map(|j| {
                                                 j.map_state(|e| StateErrored { prev: e.prev.clone(),
                                                                                prev_attempt: Some(Box::from(e)),
@@ -170,17 +171,8 @@ impl super::Store for Arc<Mutex<StoreData>> {
                                                 });
 
     if let Some(j) = errored.or(approved) {
-      let errs = j.flatten_errors();
-
-      if errs.len() > 4 {
-        log::error!("job {:?} poisoned!!1", j.id);
-        drop(store);
-        self.state_poisoned(&j.id);
-      } else {
-        store.errored.insert(job_id.clone(), j.clone());
-        self.emit(store, Event::Errored(&j));
-      }
-
+      store.errored.insert(job_id.clone(), j.clone());
+      self.emit(store, Event::Errored(&j));
       Some(job_id.clone())
     } else {
       None

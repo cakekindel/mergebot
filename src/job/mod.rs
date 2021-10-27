@@ -194,7 +194,10 @@ impl Job<StateErrored> {
   pub fn flatten_errors(&self) -> Vec<StateErrored> {
     fn go(err: &Option<Box<StateErrored>>, mut errs: Vec<StateErrored>) -> Vec<StateErrored> {
       if let Some(ref err) = *err {
-        errs.push(err.as_ref().clone());
+        let mut err_copy = err.as_ref().clone();
+        err_copy.prev_attempt = None;
+        errs.push(err_copy);
+
         go(&err.prev_attempt, errs)
       } else {
         errs
