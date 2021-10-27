@@ -295,10 +295,11 @@ pub mod filters {
                           mergebot: &'static State)
                           -> Result<warp::reply::WithStatus<String>, warp::reject::Rejection> {
     let try_create_job = |(cmd, app): (deploy::Command, _)| {
-      let existing = mergebot.jobs
-                             .get_all()
-                             .into_iter()
-                             .find(|j| j.app == app && j.command.env_name.loose_eq(&cmd.env_name));
+      let existing = mergebot.jobs.get_all().into_iter().find(|j| {
+                                                          j.state.in_progress()
+                                                          && j.app == app
+                                                          && j.command.env_name.loose_eq(&cmd.env_name)
+                                                        });
 
       if let Some(job) = existing {
         Err(deploy::Error::JobAlreadyQueued(job))
@@ -308,8 +309,13 @@ pub mod filters {
     };
 
     let bad_req = || warp::reply::with_status(String::new(), http::StatusCode::BAD_REQUEST);
-    let failed = || {
-      warp::reply::with_status("Uh oh :confused: I wasn't able to do that. <https://github.com/cakekindel/mergebot/issues|Please file an issue>!".to_string(), http::StatusCode::OK)
+    let failed = |e| {
+      let msg = match e {
+        deploy::Error::JobAlreadyQueued(job) => format!("There's already a {} deploy in progress for {}", job.command.env_name, job.app.name),
+        _ => "Uh oh :confused: I wasn't able to do that. <https://github.com/cakekindel/mergebot/issues|Please file an issue>!".to_string(),
+      };
+
+      warp::reply::with_status(msg, http::StatusCode::OK)
     };
 
     serde_urlencoded::from_bytes::<slack::SlashCommand>(&body).tap_err(|e| log::error!("{:#?}", e))
@@ -325,7 +331,7 @@ pub mod filters {
                                                                                            http::StatusCode::OK)
                                                                 })
                                                                 .tap_err(|e| log::error!("{:?}", e))
-                                                                .map_err(|_| failed())
+                                                                .map_err(failed)
                                                                 .unwrap_or_else(|e| e)
                                                               })
                                                               .and_then_err(|_| Ok(bad_req()))

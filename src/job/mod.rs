@@ -103,6 +103,13 @@ pub enum States {
   Done(StateDone),
 }
 
+impl States {
+  /// State is not Done or Poisoned
+  pub fn in_progress(&self) -> bool {
+    !matches!(self, Self::Done(_) | Self::Poisoned(_))
+  }
+}
+
 /// Job partially approved
 #[derive(Debug, Clone, Ser, De)]
 pub struct StateInit {
