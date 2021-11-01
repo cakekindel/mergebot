@@ -55,10 +55,10 @@ impl Rep {
 /// Send messages
 pub trait Messages: 'static + Sync + Send + std::fmt::Debug {
   /// Send message
-  fn send(&self, channel_id: &str, blocks: &[Block]) -> Result<Rep>;
+  fn send(&self, team_id: &str, channel_id: &str, blocks: &[Block]) -> Result<Rep>;
 
   /// Send a message in a thread
-  fn send_thread(&self, thread_parent: &Id, blocks: &[Block]) -> Result<Rep>;
+  fn send_thread(&self, team_id: &str, thread_parent: &Id, blocks: &[Block]) -> Result<Rep>;
 }
 
 fn send_body(channel: Option<&str>,
@@ -82,15 +82,19 @@ fn send_body(channel: Option<&str>,
 }
 
 fn send_base(base_url: &str,
-             token: &str,
+             token: Option<String>,
              client: &reqwest::blocking::Client,
              channel_id: Option<&str>,
              thread_parent: Option<&Id>,
              blocks: &[Block])
              -> Result<Rep> {
+  if token.is_none() {
+    Err(Error::NotInstalled)?
+  }
+
   client.post(format!("{}/api/chat.postMessage", base_url))
         .json(&send_body(channel_id, blocks, thread_parent))
-        .header("authorization", format!("Bearer {}", token))
+        .header("authorization", format!("Bearer {}", token.unwrap()))
         .send()
         .and_then(|rep| rep.error_for_status())
         .and_then(|rep| rep.json::<RepRaw>())
@@ -99,13 +103,18 @@ fn send_base(base_url: &str,
 }
 
 impl Messages for Api {
-  fn send(&self, channel_id: &str, blocks: &[Block]) -> Result<Rep> {
-    send_base(&self.base_url, &self.token, self.client, Some(channel_id), None, blocks)
+  fn send(&self, team_id: &str, channel_id: &str, blocks: &[Block]) -> Result<Rep> {
+    send_base(&self.base_url,
+              self.tokens.get(team_id),
+              self.client,
+              Some(channel_id),
+              None,
+              blocks)
   }
 
-  fn send_thread(&self, thread_parent: &Id, blocks: &[Block]) -> Result<Rep> {
+  fn send_thread(&self, team_id: &str, thread_parent: &Id, blocks: &[Block]) -> Result<Rep> {
     send_base(&self.base_url,
-              &self.token,
+              self.tokens.get(team_id),
               self.client,
               None,
               Some(thread_parent),

@@ -62,7 +62,8 @@ impl<T: slack::msg::Messages> Messenger for T {
       ]
     };
 
-    self.send(&job.app.notification_channel_id, &blocks).map(|rep| rep.id)
+    self.send(&job.app.team_id, &job.app.notification_channel_id, &blocks)
+        .map(|rep| rep.id)
   }
 
   /// Notify that the job has been executed
@@ -81,7 +82,7 @@ impl<T: slack::msg::Messages> Messenger for T {
            }.into()]
     };
 
-    self.send_thread(id, &blocks).map(|rep| rep.id)
+    self.send_thread(&job.app.team_id, id, &blocks).map(|rep| rep.id)
   }
 
   /// Notify that job has failed (poison)
@@ -106,7 +107,7 @@ impl<T: slack::msg::Messages> Messenger for T {
            }.into()]
     };
 
-    self.send_thread(id, &blocks).map(|rep| rep.id)
+    self.send_thread(&job.app.team_id, id, &blocks).map(|rep| rep.id)
   }
 
   fn send_job_done(&self, job: &job::Job<job::StateDone>) -> slack::Result<slack::msg::Id> {
@@ -128,6 +129,6 @@ impl<T: slack::msg::Messages> Messenger for T {
            }.into()]
     };
 
-    self.send_thread(id, &blocks).map(|rep| rep.id)
+    self.send_thread(&job.app.team_id, id, &blocks).map(|rep| rep.id)
   }
 }
