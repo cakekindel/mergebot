@@ -328,6 +328,8 @@ pub mod filters {
   async fn handle_command(body: bytes::Bytes,
                           mergebot: &'static State)
                           -> Result<warp::reply::WithStatus<String>, warp::reject::Rejection> {
+    use deploy::User;
+
     let try_create_job = |(cmd, app): (deploy::Command, _)| {
       let existing = mergebot.jobs.get_all().into_iter().find(|j| {
                                                           j.state.in_progress()
@@ -345,11 +347,44 @@ pub mod filters {
     let bad_req = || warp::reply::with_status(String::new(), http::StatusCode::BAD_REQUEST);
     let failed = |e| {
       let msg = match e {
-        deploy::Error::JobAlreadyQueued(job) => format!("There's already a {} deploy in progress for {}", job.command.env_name, job.app.name),
-        _ => "Uh oh :confused: I wasn't able to do that. <https://github.com/cakekindel/mergebot/issues|Please file an issue>!".to_string(),
+        | deploy::Error::JobAlreadyQueued(job) => format!("There's already a {} deploy in progress for {}",
+                                                          job.command.env_name, job.app.name),
+        | deploy::Error::EnvNotFound(app, env) => format!("I couldn't find an app named {}", app),
+        | _ => {
+          let uh_oh = "Uh oh :confused: I wasn't able to do that.";
+          let link = "https://github.com/cakekindel/mergebot/issues";
+
+          format!("{} <{}|Please file an issue> and let Orion know there's a bug!",
+                  uh_oh, link)
+        },
       };
 
       warp::reply::with_status(msg, http::StatusCode::OK)
+    };
+
+    let user_matches = |app: &deploy::App, cmd: &deploy::Command| {
+      app.repos.iter().flat_map(|r| r.environments.iter()).any(|env| {
+                                                            env.users.iter().any(|u| match u {
+                                                                              | User::User { user_id, .. } => {
+                                                                                user_id == &cmd.user_id
+                                                                              },
+                                                                              | User::Group { group_id, .. } => {
+                                                                                mergebot.slack_groups
+                                                                                        .contains_user(&app.team_id,
+                                                                                                       &group_id,
+                                                                                                       &cmd.user_id)
+                                                                                        .tap_err(|e| {
+                                                                                          log::error!("{:?}", e)
+                                                                                        })
+                                                                                        .unwrap_or(false)
+                                                                              },
+                                                                            })
+                                                          })
+    };
+
+    let user_didnt_match = |cmd: &deploy::Command| {
+      log::info!("user does not have access to app: {:?}", cmd);
+      deploy::Error::EnvNotFound(cmd.app_name.clone(), cmd.env_name.clone())
     };
 
     serde_urlencoded::from_bytes::<slack::SlashCommand>(&body).tap_err(|e| log::error!("{:#?}", e))
@@ -357,8 +392,10 @@ pub mod filters {
                                                                 deploy::Command::try_from(slash).and_then(|cmd| {
                                                                   mergebot.app_reader
                                                                           .get_matching_cmd(&cmd)
+                                                                          .filter(|app| user_matches(app, &cmd),
+                                                                                  |_| user_didnt_match(&cmd))
                                                                           .map(|app| (cmd, app))
-                                                                }) // [2], [3], [4]
+                                                                })
                                                                 .and_then(try_create_job)
                                                                 .map(|_| {
                                                                   warp::reply::with_status(String::new(),

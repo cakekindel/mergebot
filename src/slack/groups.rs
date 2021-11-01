@@ -20,15 +20,11 @@ pub trait Groups: 'static + Sync + Send + std::fmt::Debug {
 
 impl Groups for super::Api {
   fn expand(&self, team_id: &str, group_id: &str) -> Result<Vec<String>> {
-    let token = self.tokens.get(team_id);
-
-    if token.is_none() {
-      Err(Error::NotInstalled)?
-    }
+    let token = self.tokens.get(team_id).ok_or(Error::NotInstalled)?;
 
     self.client
         .get(format!("{}/api/usergroups.users.list?usergroup={}", self.base_url, group_id))
-        .header("authorization", format!("Bearer {}", token.unwrap()))
+        .header("authorization", format!("Bearer {}", token))
         .send()
         .and_then(|rep| rep.error_for_status())
         .map_err(Error::Http)

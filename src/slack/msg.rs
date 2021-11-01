@@ -88,13 +88,11 @@ fn send_base(base_url: &str,
              thread_parent: Option<&Id>,
              blocks: &[Block])
              -> Result<Rep> {
-  if token.is_none() {
-    Err(Error::NotInstalled)?
-  }
+  let token = token.ok_or(Error::NotInstalled)?;
 
   client.post(format!("{}/api/chat.postMessage", base_url))
         .json(&send_body(channel_id, blocks, thread_parent))
-        .header("authorization", format!("Bearer {}", token.unwrap()))
+        .header("authorization", format!("Bearer {}", token))
         .send()
         .and_then(|rep| rep.error_for_status())
         .and_then(|rep| rep.json::<RepRaw>())
