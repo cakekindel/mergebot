@@ -40,7 +40,7 @@ impl<T: slack::msg::Messages> Messenger for T {
     let users = job.app
                    .repos
                    .iter()
-                   .flat_map(|repo| repo.environments.iter().flat_map(|env| env.users.iter()))
+                   .flat_map(|repo| repo.environments.iter().filter(|env| env.name_eq(&job.command.env_name)).flat_map(|env| env.users.iter()))
                    .collect::<Vec<_>>();
 
     let approvers = users.iter().copied().filter(|u| u.is_approver()).collect::<Vec<_>>();
