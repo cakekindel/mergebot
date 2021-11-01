@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize as De, Serialize as Ser};
 
+const SCOPES: [&str; 4] = ["chat:write", "commands", "reactions:read", "usergroups:read"];
+
 /// Event models
 pub mod event;
 
@@ -48,7 +50,7 @@ impl Api {
 pub fn authorize_uri(client_id: impl ToString) -> String {
   let mut params: HashMap<&'static str, String> = HashMap::new();
   params.insert("client_id", client_id.to_string());
-  params.insert("scope", String::new());
+  params.insert("scope", SCOPES.join(" "));
 
   let params_str = serde_urlencoded::to_string(params).unwrap();
 
@@ -165,9 +167,12 @@ mod tests {
 
   #[test]
   fn test_authorize_uri() {
-    let expected = "https://slack.com/oauth/authorize?client_id=FOO&scope=";
-    let actual = authorize_uri("FOO");
+    let params_str = authorize_uri("FOO").strip_prefix("https://slack.com/oauth/authorize?")
+                                         .expect("URI should start with correct base url")
+                                         .to_string();
+    let params = serde_urlencoded::from_str::<HashMap<String, String>>(&params_str).expect("params should deserialize");
 
-    assert_eq!(actual, expected)
+    assert_eq!(params.get("client_id").unwrap().as_str(), "FOO");
+    assert_eq!(params.get("scope").unwrap().as_str(), SCOPES.join(" "));
   }
 }
