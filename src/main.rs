@@ -328,6 +328,8 @@ pub mod filters {
   async fn handle_command(body: bytes::Bytes,
                           mergebot: &'static State)
                           -> Result<warp::reply::WithStatus<String>, warp::reject::Rejection> {
+    use deploy::User;
+
     let try_create_job = |(cmd, app): (deploy::Command, _)| {
       let existing = mergebot.jobs.get_all().into_iter().find(|j| {
                                                           j.state.in_progress()
@@ -357,6 +359,17 @@ pub mod filters {
                                                                 deploy::Command::try_from(slash).and_then(|cmd| {
                                                                   mergebot.app_reader
                                                                           .get_matching_cmd(&cmd)
+                                                                          .filter(|app| {
+                                                                            app.repos.iter()
+                                                                               .flat_map(|r| r.environments.iter())
+                                                                               .any(|env| env.users.iter().any(|u| match u {
+                                                                                 User::User {user_id, ..} => user_id == &cmd.user_id,
+                                                                                 User::Group {group_id, ..} => mergebot.slack_groups.contains_user(&app.team_id, &group_id, &cmd.user_id).tap_err(|e| log::error!("{:?}", e)).unwrap_or(false)
+                                                                               }))
+                                                                          }, |_| {
+                                                                            log::info!("user does not have access to app: {:?}", cmd);
+                                                                            deploy::Error::EnvNotFound(cmd.app_name.clone(), cmd.env_name.clone())
+                                                                          })
                                                                           .map(|app| (cmd, app))
                                                                 }) // [2], [3], [4]
                                                                 .and_then(try_create_job)
