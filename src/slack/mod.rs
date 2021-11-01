@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize as De, Serialize as Ser};
 
-const SCOPES: [&str; 4] = ["chat:write", "commands", "reactions:read", "usergroups:read"];
+const SCOPES: [&str; 5] = ["bot", "chat:write:bot", "commands", "reactions:read", "usergroups:read"];
 
 /// Event models
 pub mod event;
