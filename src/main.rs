@@ -149,21 +149,42 @@ pub mod filters {
 
   /// The composite warp filter that defines our HTTP api
   pub fn api(state: fn() -> StateFilter) -> filter!() {
-    hello().or(oauth_redirect(state))
+    hello().or(install(state))
+           .or(oauth_redirect(state))
            .or(command_filter(state))
            .or(event_filter(state))
            .or(get_jobs(state))
            .recover(handle_unauthorized)
   }
 
-  fn oauth_redirect(state: fn() -> StateFilter) -> filter!() {
-    warp::path!("redirect").and(state())
+  fn install(state: fn() -> StateFilter) -> filter!() {
+    warp::path!("install").and(state())
                            .map(|state| (state, warp::reply::with_status("", http::StatusCode::FOUND)))
                            .map(|(state, reply): (&'static mergebot::State, warp::reply::WithStatus<&'static str>)| {
                                   warp::reply::with_header(reply,
                                                            "Location",
                                                            slack::authorize_uri(&state.slack_client_id))
                                 })
+  }
+
+  fn oauth_redirect(state: fn() -> StateFilter) -> filter!() {
+    use serde::{Serialize, Deserialize};
+
+    #[derive(Serialize, Deserialize)]
+    struct Params {
+      code: String
+    }
+
+    warp::path!("redirect").and(state())
+                           .and(warp::filters::query::query::<Params>())
+                           .map(|state: &'static State, Params{code}| {
+                             if let Err(e) = state.slack_access.access(&code, &state.slack_client_id, &state.slack_client_secret) {
+                               log::error!("{:?}", e);
+                               warp::reply::html("<html><body><h1>Install failed</h1></body></html>")
+                             } else {
+                               warp::reply::html("<html><body><h1>Installed successfully</h1></body></html>")
+                             }
+                           })
   }
 
   fn api_key(state: StateFilter) -> filter!(()) {
@@ -209,7 +230,7 @@ pub mod filters {
 
     let user_in_group = |group_id: &str| {
       state.slack_groups
-           .contains_user(group_id, user_id)
+           .contains_user(&job.app.team_id, group_id, user_id)
            .map_err(|e| log::error!("{:#?}", e))
            .unwrap_or(false)
     };

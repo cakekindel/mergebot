@@ -12,17 +12,23 @@ struct Rep {
 /// Trait representing slack api ops around user groups
 pub trait Groups: 'static + Sync + Send + std::fmt::Debug {
   /// Expand a group id into user ids
-  fn expand(&self, group_id: &str) -> Result<Vec<String>>;
+  fn expand(&self, team_id: &str, group_id: &str) -> Result<Vec<String>>;
 
   /// Check if a group contains a user
-  fn contains_user(&self, group_id: &str, user_id: &str) -> Result<bool>;
+  fn contains_user(&self, team_id: &str, group_id: &str, user_id: &str) -> Result<bool>;
 }
 
 impl Groups for super::Api {
-  fn expand(&self, group_id: &str) -> Result<Vec<String>> {
+  fn expand(&self, team_id: &str, group_id: &str) -> Result<Vec<String>> {
+    let token = self.tokens.get(team_id);
+
+    if token.is_none() {
+      Err(Error::NotInstalled)?
+    }
+
     self.client
         .get(format!("{}/api/usergroups.users.list?usergroup={}", self.base_url, group_id))
-        .header("authorization", format!("Bearer {}", self.token))
+        .header("authorization", format!("Bearer {}", token.unwrap()))
         .send()
         .and_then(|rep| rep.error_for_status())
         .map_err(Error::Http)
@@ -33,7 +39,7 @@ impl Groups for super::Api {
         })
   }
 
-  fn contains_user(&self, group_id: &str, user_id: &str) -> Result<bool> {
-    self.expand(group_id).map(|g| g.contains(&user_id.to_string()))
+  fn contains_user(&self, team_id: &str, group_id: &str, user_id: &str) -> Result<bool> {
+    self.expand(team_id, group_id).map(|g| g.contains(&user_id.to_string()))
   }
 }

@@ -35,10 +35,10 @@ pub mod job;
 pub struct State {
   /// slack signing secret
   pub slack_signing_secret: String,
-  /// slack api token
-  pub slack_api_token: String,
   /// slack app client id
   pub slack_client_id: String,
+  /// slack app client secret
+  pub slack_client_secret: String,
   /// API token used to access jobs api
   pub api_key: String,
   /// notifies approvers
@@ -53,6 +53,8 @@ pub struct State {
   pub slack_groups: Box<dyn slack::groups::Groups>,
   /// slack msg API
   pub slack_msg: Box<dyn slack::msg::Messages>,
+  /// slack Oauth Access
+  pub slack_access: Box<dyn slack::access::Access>,
   /// git client
   pub git: Box<dyn git::Client>,
   /// transition jobs from "Approved" -> "Done" | "Poisoned"
@@ -67,12 +69,13 @@ lazy_static::lazy_static! {
     let api_key = env::var("API_KEY").expect("API_KEY required");
     let slack_signing_secret = env::var("SLACK_SIGNING_SECRET").expect("SLACK_SIGNING_SECRET required");
     let slack_client_id = env::var("SLACK_CLIENT_ID").expect("SLACK_CLIENT_ID required");
-    let slack_api_token = env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required");
+    let slack_client_secret = env::var("SLACK_CLIENT_SECRET").expect("SLACK_CLIENT_SECRET required");
 
     // Slack API
-    let slack_api = slack::Api::new("https://www.slack.com", &slack_api_token, &CLIENT);
+    let slack_api = slack::Api::new("https://www.slack.com", &slack::tokens::Fs, &CLIENT);
     let slack_groups = Box::from(slack_api.clone());
     let job_messenger = Box::from(slack_api.clone());
+    let slack_access = Box::from(slack_api.clone());
     let slack_msg = Box::from(slack_api);
 
     // Git client
@@ -95,12 +98,13 @@ lazy_static::lazy_static! {
       api_key,
       slack_signing_secret,
       slack_client_id,
-      slack_api_token,
+      slack_client_secret,
       jobs,
       app_reader,
       slack_groups,
       job_messenger,
       slack_msg,
+      slack_access,
       git,
       job_executor,
     }
