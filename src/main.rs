@@ -149,10 +149,16 @@ pub mod filters {
 
   /// The composite warp filter that defines our HTTP api
   pub fn api(state: fn() -> StateFilter) -> filter!() {
-    hello().or(command_filter(state))
+    hello().or(oauth_redirect())
+           .or(command_filter(state))
            .or(event_filter(state))
            .or(get_jobs(state))
            .recover(handle_unauthorized)
+  }
+
+  fn oauth_redirect() -> filter!() {
+    warp::path!("redirect")
+         .map(|| warp::reply::with_status("", http::StatusCode::OK))
   }
 
   fn api_key(state: StateFilter) -> filter!(()) {
