@@ -138,9 +138,7 @@ pub trait Reader: 'static + Sync + Send + std::fmt::Debug {
 
     let loose_eq = |a: &str, b: &str| a.trim().to_lowercase() == b.trim().to_lowercase();
 
-    let env_matches = |env: &Mergeable| -> bool {
-      env.name.loose_eq(&cmd.env_name)
-    };
+    let env_matches = |env: &Mergeable| -> bool { env.name.loose_eq(&cmd.env_name) };
 
     let matches_env_and_user = |app: &App| -> bool { app.repos.iter().any(|r| r.environments.iter().any(env_matches)) };
 
