@@ -37,6 +37,8 @@ pub struct State {
   pub slack_signing_secret: String,
   /// slack api token
   pub slack_api_token: String,
+  /// slack app client id
+  pub slack_client_id: String,
   /// API token used to access jobs api
   pub api_key: String,
   /// notifies approvers
@@ -61,29 +63,46 @@ lazy_static::lazy_static! {
   pub static ref APP_INIT: Arc<Barrier> = Arc::new(Barrier::new(2));
   pub static ref CLIENT: reqwest::blocking::Client =reqwest::blocking::Client::new();
   pub static ref STATE: State = {
-    let slack_token = env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required");
-    let slack_api = slack::Api::new("https://www.slack.com", &slack_token, &CLIENT);
+    // Environment
+    let api_key = env::var("API_KEY").expect("API_KEY required");
+    let slack_signing_secret = env::var("SLACK_SIGNING_SECRET").expect("SLACK_SIGNING_SECRET required");
+    let slack_client_id = env::var("SLACK_CLIENT_ID").expect("SLACK_CLIENT_ID required");
+    let slack_api_token = env::var("SLACK_API_TOKEN").expect("SLACK_API_TOKEN required");
 
+    // Slack API
+    let slack_api = slack::Api::new("https://www.slack.com", &slack_api_token, &CLIENT);
+    let slack_groups = Box::from(slack_api.clone());
+    let job_messenger = Box::from(slack_api.clone());
+    let slack_msg = Box::from(slack_api);
+
+    // Git client
     git::r#impl::init(env::var("GIT_WORKDIR").expect("GIT_WORKDIR required"));
+    let git = Box::from(git::r#impl::StaticClient);
 
-    let git = git::r#impl::StaticClient;
+    // Job store
+    let jobs = Box::from(Arc::new(Mutex::new(job::store::StoreData::new())));
 
-    let jobs = Arc::new(Mutex::new(job::store::StoreData::new()));
+    // Job executor
+    // TODO(orion): does not need to be at this level, could be implementation detail of job store?
+    job::exec::r#impl::init(jobs.clone(), git.clone());
+    let job_executor = Box::from(job::exec::r#impl::Executor);
 
-    job::exec::r#impl::init(Box::from(jobs.clone()), Box::from(git));
+    // App configuration reader
+    let app_reader = Box::from(deploy::app::JsonFile);
 
     State {
-      api_key: env::var("API_KEY").expect("API_KEY required"),
-      slack_signing_secret: env::var("SLACK_SIGNING_SECRET").expect("SLACK_SIGNING_SECRET required"),
-      slack_api_token: slack_token,
-      jobs: Box::from(jobs),
-      app_reader: Box::from(deploy::app::JsonFile),
       reqwest_client: &CLIENT,
-      slack_groups: Box::from(slack_api.clone()),
-      job_messenger: Box::from(slack_api.clone()),
-      slack_msg: Box::from(slack_api),
-      git: Box::from(git),
-      job_executor: Box::from(job::exec::r#impl::Executor),
+      api_key,
+      slack_signing_secret,
+      slack_client_id,
+      slack_api_token,
+      jobs,
+      app_reader,
+      slack_groups,
+      job_messenger,
+      slack_msg,
+      git,
+      job_executor,
     }
   };
 }

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize as De, Serialize as Ser};
 
 /// Event models
@@ -40,6 +42,17 @@ impl Api {
            token: token.to_string(),
            client }
   }
+}
+
+/// Slack URI to redirect to as part of installation flow
+pub fn authorize_uri(client_id: impl ToString) -> String {
+  let mut params: HashMap<&'static str, String> = HashMap::new();
+  params.insert("client_id", client_id.to_string());
+  params.insert("scope", String::new());
+
+  let params_str = serde_urlencoded::to_string(params).unwrap();
+
+  format!("https://slack.com/oauth/authorize?{}", params_str)
 }
 
 /// Validate an incoming HTTP request from slack
@@ -148,5 +161,13 @@ mod tests {
     let parsed = serde_urlencoded::from_str::<super::SlashCommand>(data).unwrap();
 
     assert_eq!(parsed, expected);
+  }
+
+  #[test]
+  fn test_authorize_uri() {
+    let expected = "https://slack.com/oauth/authorize?client_id=FOO&scope=";
+    let actual = authorize_uri("FOO");
+
+    assert_eq!(actual, expected)
   }
 }

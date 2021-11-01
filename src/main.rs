@@ -149,16 +149,21 @@ pub mod filters {
 
   /// The composite warp filter that defines our HTTP api
   pub fn api(state: fn() -> StateFilter) -> filter!() {
-    hello().or(oauth_redirect())
+    hello().or(oauth_redirect(state))
            .or(command_filter(state))
            .or(event_filter(state))
            .or(get_jobs(state))
            .recover(handle_unauthorized)
   }
 
-  fn oauth_redirect() -> filter!() {
-    warp::path!("redirect")
-         .map(|| warp::reply::with_status("", http::StatusCode::OK))
+  fn oauth_redirect(state: fn() -> StateFilter) -> filter!() {
+    warp::path!("redirect").and(state())
+                           .map(|state| (state, warp::reply::with_status("", http::StatusCode::FOUND)))
+                           .map(|(state, reply): (&'static mergebot::State, warp::reply::WithStatus<&'static str>)| {
+                                  warp::reply::with_header(reply,
+                                                           "Location",
+                                                           slack::authorize_uri(&state.slack_client_id))
+                                })
   }
 
   fn api_key(state: StateFilter) -> filter!(()) {
