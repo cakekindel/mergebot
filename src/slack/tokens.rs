@@ -1,4 +1,5 @@
 use std::fs;
+
 use super::access::AccessRep;
 
 pub trait TokenMgr: 'static + std::fmt::Debug + Sync + Send {
@@ -13,7 +14,10 @@ pub trait TokenMgr: 'static + std::fmt::Debug + Sync + Send {
   }
 
   fn get(&self, team_id: &str) -> Option<String> {
-    self.tokens().into_iter().find(|rep| rep.team.id == team_id.as_ref()).map(|rep| rep.access_token)
+    self.tokens()
+        .into_iter()
+        .find(|rep| rep.team.id == team_id.as_ref())
+        .map(|rep| rep.access_token)
   }
 }
 

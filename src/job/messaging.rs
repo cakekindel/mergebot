@@ -62,7 +62,8 @@ impl<T: slack::msg::Messages> Messenger for T {
       ]
     };
 
-    self.send(&job.app.team_id, &job.app.notification_channel_id, &blocks).map(|rep| rep.id)
+    self.send(&job.app.team_id, &job.app.notification_channel_id, &blocks)
+        .map(|rep| rep.id)
   }
 
   /// Notify that the job has been executed

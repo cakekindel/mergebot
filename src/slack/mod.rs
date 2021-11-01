@@ -48,10 +48,12 @@ pub struct Api {
 
 impl Api {
   /// Create a new instance
-  pub fn new(base_url: impl ToString, tokens: &'static dyn tokens::TokenMgr, client: &'static reqwest::blocking::Client) -> Self {
-    Self {
-        base_url: base_url.to_string(),
-        tokens,
+  pub fn new(base_url: impl ToString,
+             tokens: &'static dyn tokens::TokenMgr,
+             client: &'static reqwest::blocking::Client)
+             -> Self {
+    Self { base_url: base_url.to_string(),
+           tokens,
            client }
   }
 }

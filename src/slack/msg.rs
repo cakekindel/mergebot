@@ -104,7 +104,12 @@ fn send_base(base_url: &str,
 
 impl Messages for Api {
   fn send(&self, team_id: &str, channel_id: &str, blocks: &[Block]) -> Result<Rep> {
-    send_base(&self.base_url, self.tokens.get(team_id), self.client, Some(channel_id), None, blocks)
+    send_base(&self.base_url,
+              self.tokens.get(team_id),
+              self.client,
+              Some(channel_id),
+              None,
+              blocks)
   }
 
   fn send_thread(&self, team_id: &str, thread_parent: &Id, blocks: &[Block]) -> Result<Rep> {

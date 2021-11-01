@@ -159,26 +159,28 @@ pub mod filters {
 
   fn install(state: fn() -> StateFilter) -> filter!() {
     warp::path!("install").and(state())
-                           .map(|state| (state, warp::reply::with_status("", http::StatusCode::FOUND)))
-                           .map(|(state, reply): (&'static mergebot::State, warp::reply::WithStatus<&'static str>)| {
-                                  warp::reply::with_header(reply,
-                                                           "Location",
-                                                           slack::authorize_uri(&state.slack_client_id))
-                                })
+                          .map(|state| (state, warp::reply::with_status("", http::StatusCode::FOUND)))
+                          .map(|(state, reply): (&'static mergebot::State, warp::reply::WithStatus<&'static str>)| {
+                                 warp::reply::with_header(reply,
+                                                          "Location",
+                                                          slack::authorize_uri(&state.slack_client_id))
+                               })
   }
 
   fn oauth_redirect(state: fn() -> StateFilter) -> filter!() {
-    use serde::{Serialize, Deserialize};
+    use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]
     struct Params {
-      code: String
+      code: String,
     }
 
     warp::path!("redirect").and(state())
                            .and(warp::filters::query::query::<Params>())
-                           .map(|state: &'static State, Params{code}| {
-                             if let Err(e) = state.slack_access.access(&code, &state.slack_client_id, &state.slack_client_secret) {
+                           .map(|state: &'static State, Params { code }| {
+                             if let Err(e) = state.slack_access
+                                                  .access(&code, &state.slack_client_id, &state.slack_client_secret)
+                             {
                                log::error!("{:?}", e);
                                warp::reply::html("<html><body><h1>Install failed</h1></body></html>")
                              } else {

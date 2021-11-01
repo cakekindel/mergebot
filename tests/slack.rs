@@ -1,11 +1,9 @@
-use mergebot::slack;
-use mergebot::mutex_extra::lock_discard_poison;
-use slack::access::AccessRep;
-use std::sync::Mutex;
-use slack::tokens::TokenMgr;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Mutex};
+
+use mergebot::{mutex_extra::lock_discard_poison, slack};
 use mockito::{mock, Matcher as Match};
 use reqwest::blocking::Client;
+use slack::{access::AccessRep, tokens::TokenMgr};
 
 fn pretend_static<T>(t: &T) -> &'static T {
   unsafe { std::mem::transmute::<&T, &'static T>(t) }
@@ -15,8 +13,12 @@ fn pretend_static<T>(t: &T) -> &'static T {
 struct TokensFake;
 
 impl slack::tokens::TokenMgr for TokensFake {
-  fn tokens(&self) -> Vec<AccessRep> {lock_discard_poison(&TOKENS).clone()}
-  fn set_tokens(&self, reps: Vec<AccessRep>) {*lock_discard_poison(&TOKENS) = reps;}
+  fn tokens(&self) -> Vec<AccessRep> {
+    lock_discard_poison(&TOKENS).clone()
+  }
+  fn set_tokens(&self, reps: Vec<AccessRep>) {
+    *lock_discard_poison(&TOKENS) = reps;
+  }
 }
 
 lazy_static::lazy_static! {
@@ -150,7 +152,8 @@ pub fn messages_send_thread() {
   let client_ref = &client;
   let api = mk_api(pretend_static(client_ref));
 
-  let res = api.send_thread("team_id", &slack::msg::Id { ts: "z1234".to_string(),
+  let res = api.send_thread("team_id",
+                            &slack::msg::Id { ts: "z1234".to_string(),
                                               channel: "C1234".to_string() },
                             &[]);
 
@@ -163,8 +166,8 @@ pub fn messages_send_thread() {
 
 #[test]
 pub fn oauth_access() {
-  use slack::access;
   use access::Access;
+  use slack::access;
 
   let token = "xoxb-17653672481-19874698323-pdFZKVeTuE8sk7oOcBrzbqgy";
   let rep = serde_json::json!({
@@ -192,7 +195,8 @@ pub fn oauth_access() {
 
   let basic = base64::encode(format!("{}:{}", "CLIENT_ID", "CLIENT_SECRET"));
 
-  let moq = mock("POST", "/api/oauth.v2.access").match_header("authorization", Match::Exact(format!("Basic {}", basic)))
+  let moq = mock("POST", "/api/oauth.v2.access").match_header("authorization",
+                                                              Match::Exact(format!("Basic {}", basic)))
                                                 .match_query(Match::UrlEncoded("code".into(), "CODE".into()))
                                                 .with_status(200)
                                                 .with_header("Content-Type", "application/json")
@@ -207,8 +211,7 @@ pub fn oauth_access() {
 
   moq.assert();
 
-  assert_eq!(res.unwrap().access_token,
-             token);
+  assert_eq!(res.unwrap().access_token, token);
   assert_eq!(TOKENS_FAKE.get("team_id_2"), Some(String::from(token)));
 }
 
