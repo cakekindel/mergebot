@@ -40,7 +40,12 @@ impl<T: slack::msg::Messages> Messenger for T {
     let users = job.app
                    .repos
                    .iter()
-                   .flat_map(|repo| repo.environments.iter().filter(|env| env.name_eq(&job.command.env_name)).flat_map(|env| env.users.iter()))
+                   .flat_map(|repo| {
+                     repo.environments
+                         .iter()
+                         .filter(|env| env.name_eq(&job.command.env_name))
+                         .flat_map(|env| env.users.iter())
+                   })
                    .collect::<Vec<_>>();
 
     let mut approvers = users.iter().copied().filter(|u| u.is_approver()).collect::<Vec<_>>();
@@ -63,7 +68,8 @@ impl<T: slack::msg::Messages> Messenger for T {
       ]
     };
 
-    self.send(&job.app.team_id, &job.app.notification_channel_id, &blocks).map(|rep| rep.id)
+    self.send(&job.app.team_id, &job.app.notification_channel_id, &blocks)
+        .map(|rep| rep.id)
   }
 
   /// Notify that the job has been executed

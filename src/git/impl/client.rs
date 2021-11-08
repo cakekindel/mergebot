@@ -112,8 +112,8 @@ impl git::Client for StaticClient {
          }
        })
        .and_then(|_| git.clone(url, dirname))
-       .map(|dir| git.cd(dir))
-       .map(|_| git::r#impl::RepoContext::new(lock))
+       .map(|dir| (dir.to_string_lossy().to_string(), git.cd(dir)))
+       .map(|(dir, _)| git::r#impl::RepoContext::new(format!("{}", dir), lock))
        .map(|c| Box::from(c) as Box<dyn git::RepoContext>)
   }
 }

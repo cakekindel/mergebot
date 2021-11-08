@@ -5,14 +5,17 @@ use git::{r#impl::LocalClient, Branch, Error, Output};
 use crate::{git, mutex_extra::lock_discard_poison, result_extra::ResultExtra};
 
 pub(super) struct RepoContext<'a> {
+  log_prefix: String,
   lock: MutexGuard<'a, Option<LocalClient>>,
   current_branch: Mutex<Option<Branch>>, // wrap in mutex for interior mutability while preserving Sync impl
 }
 
 impl<'a> RepoContext<'a> {
-  pub(super) fn new(lock: MutexGuard<'a, Option<LocalClient>>) -> Self {
+  pub(super) fn new(log_prefix: String, lock: MutexGuard<'a, Option<LocalClient>>) -> Self {
     let current_branch = Mutex::new(None);
-    Self { lock, current_branch }
+    Self { log_prefix,
+           lock,
+           current_branch }
   }
 
   fn cur_branch(&self) -> Option<Branch> {
@@ -32,14 +35,26 @@ impl<'a> git::RepoContext for RepoContext<'a> {
            .map(|Output(remote)| remote.strip_suffix('\n').map(String::from).unwrap_or(remote))
            .map(|remote| Branch(format!("{}/{}", remote, branch.0)))
         })
-        .tap(|ok| log::info!("got upstream {:?}", ok))
-        .tap_err(|err| log::error!("get upstream failed {:?}", err))
+        .tap(|ok| log::info!("{}(upstream) {:?}", self.log_prefix, ok))
+        .tap_err(|err| log::error!("{}(upstream) {:?}", self.log_prefix, err))
   }
 
   fn merge(&self, target: &Branch) -> git::Result<()> {
     self.client(|c| c.git(&["merge", &target.0, "--message", "chore: mergebot deploy"]))
-        .tap(|ok| log::info!("merge {:?} -> {:?}: succeeded {:?}", self.cur_branch(), target, ok))
-        .tap_err(|err| log::error!("merge {:?} -> {:?}: failed {:?}", self.cur_branch(), target, err))
+        .tap(|ok| {
+          log::info!("{}(merge {:?} -> {:?}) {:?}",
+                     self.log_prefix,
+                     target,
+                     self.cur_branch(),
+                     ok)
+        })
+        .tap_err(|err| {
+          log::error!("{}(merge {:?} -> {:?}) {:?}",
+                      self.log_prefix,
+                      target,
+                      self.cur_branch(),
+                      err)
+        })
         .map(|_| ())
   }
 
@@ -52,16 +67,28 @@ impl<'a> git::RepoContext for RepoContext<'a> {
           }
           res
         })
-        .tap(|ok| log::info!("switch {:?} -> {:?}: succeeded {:?}", self.cur_branch(), branch, ok))
-        .tap_err(|err| log::error!("switch {:?} -> {:?}: failed {:?}", self.cur_branch(), branch, err))
+        .tap(|ok| {
+          log::info!("{}(switch {:?} -> {:?}) {:?}",
+                     self.log_prefix,
+                     self.cur_branch().unwrap_or("unset".into()),
+                     branch,
+                     ok)
+        })
+        .tap_err(|err| {
+          log::error!("{}(switch {:?} -> {:?}) {:?}",
+                      self.log_prefix,
+                      self.cur_branch().unwrap_or("unset".into()),
+                      branch,
+                      err)
+        })
         .map(|_| ())
   }
 
   fn push(&self) -> git::Result<()> {
     self.client(|c| c.git(&["push", "--no-verify", "--force"]))
         .map(|_| ())
-        .tap(|ok| log::info!("push {:?}: succeeded {:?}", self.cur_branch(), ok))
-        .tap_err(|err| log::error!("push {:?}: failed {:?}", self.cur_branch(), err))
+        .tap(|ok| log::info!("{}(push {:?}) {:?}", self.log_prefix, self.cur_branch(), ok))
+        .tap_err(|err| log::error!("{}(push {:?}) {:?}", self.log_prefix, self.cur_branch(), err))
   }
 
   fn update_branch(&self) -> git::Result<()> {
@@ -72,15 +99,15 @@ impl<'a> git::RepoContext for RepoContext<'a> {
               .ok_or(Error::NoBranchToUpdate)
               .and_then(|b| self.upstream(b))
               .and_then(|up| self.client(|c| c.git(&["reset", &up.0, "--hard"])))
-              .tap(|ok| log::info!("update_branch {:?}: succeeded {:?}", self.cur_branch(), ok))
-              .tap_err(|err| log::error!("update_branch {:?}: failed {:?}", self.cur_branch(), err))
+              .tap(|ok| log::info!("{}(update_branch {:?}) {:?}", self.log_prefix, self.cur_branch(), ok))
+              .tap_err(|err| log::error!("{}(update_branch {:?}) {:?}", self.log_prefix, self.cur_branch(), err))
               .map(|_| ())
   }
 
   fn fetch_all(&self) -> git::Result<()> {
     self.client(|c| c.git(&["fetch", "--all"]))
-        .tap(|ok| log::info!("fetch_all: succeeded {:?}", ok))
-        .tap_err(|err| log::error!("fetch_all: failed {:?}", err))
+        .tap(|ok| log::info!("`{}(fetch_all) {:?}", self.log_prefix, ok))
+        .tap_err(|err| log::error!("`{}(fetch_all) {:?}", self.log_prefix, err))
         .map(|_| ())
   }
 }
