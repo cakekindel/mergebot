@@ -164,7 +164,7 @@ fn worker() {
       log::info!("job {:?}: working", work.job().id);
       exec(&work.job());
     } else {
-      log::info!("worker thread up");
+      log::info!("worker thread awake and waiting for work");
 
       let lock = lock_discard_poison(&WORK_QUEUED.0);
 
