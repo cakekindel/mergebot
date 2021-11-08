@@ -40,7 +40,7 @@ impl<'a> git::RepoContext for RepoContext<'a> {
   }
 
   fn merge(&self, target: &Branch) -> git::Result<()> {
-    self.client(|c| c.git(&["merge", &target.0, "--message", "chore: mergebot deploy"]))
+    self.client(|c| c.git(&["merge", &target.0, "--ff-only", "--message", "chore: mergebot deploy"]))
         .tap(|ok| {
           log::info!("{}(merge {:?} -> {:?}) {:?}",
                      self.log_prefix,
