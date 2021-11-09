@@ -28,6 +28,8 @@ impl Mergeable {
 pub struct Repo {
   /// Remote URL of the repo (must be SSH)
   pub url: String,
+  /// HTTP web URL to the repo. (e.g. <https://github.com/cakekindel/mergebot>)
+  pub human_url: String,
   /// Pretty name of the repo. Not matched against.
   pub name: String,
   /// The environments contained within the repo
