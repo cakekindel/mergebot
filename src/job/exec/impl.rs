@@ -87,19 +87,21 @@ fn exec<S: job::State>(job: &Job<S>) {
                                     .find(|env| env.name_eq(&job.command.env_name))
                                     .expect("Environment was already matched against command");
 
-                  git.repo(&app_repo.url, &app_repo.name).and_then(|repo| {
-                                                           repo.fetch_all()?;
+                  // clone into app_repo, e.g. mergebot_frontend
+                  git.repo(&app_repo.url, &format!("{}_{}", job.app.name, app_repo.name))
+                     .and_then(|repo| {
+                       repo.fetch_all()?;
 
-                                                           repo.switch(&env.base)?;
-                                                           repo.update_branch()?;
+                       repo.switch(&env.base)?;
+                       repo.update_branch()?;
 
-                                                           repo.switch(&env.target)?;
-                                                           repo.update_branch()?;
+                       repo.switch(&env.target)?;
+                       repo.update_branch()?;
 
-                                                           repo.merge(&env.base)?;
+                       repo.merge(&env.base)?;
 
-                                                           repo.push()
-                                                         })
+                       repo.push()
+                     })
                 })
                 .filter_map(|r| r.err().map(job::Error::Git))
                 .collect::<Vec<_>>();
