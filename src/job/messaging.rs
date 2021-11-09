@@ -249,7 +249,7 @@ mod tests {
       }
     });
 
-    let job = serde_json::from_value::<Job<job::StateInit>>(&job);
+    let job = serde_json::from_value::<Job<job::StateInit>>(job).unwrap();
 
     println!("{}", serde_json::to_string_pretty(&job).unwrap());
 
